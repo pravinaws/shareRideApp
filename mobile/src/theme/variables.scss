@@ -1,0 +1,32 @@
+:root {
+  color-scheme: light;
+  --ion-font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Display", Roboto, Arial, sans-serif;
+  --ion-color-primary: #001F3F;
+  --ion-color-primary-rgb: 0, 31, 63;
+  --ion-color-primary-contrast: #ffffff;
+  --ion-color-primary-contrast-rgb: 255, 255, 255;
+  --ion-color-primary-shade: #001b37;
+  --ion-color-primary-tint: #1a3552;
+  --ion-background-color: #ffffff;
+  --ion-text-color: #000000;
+  --app-card-radius: 14px;
+  --app-soft-shadow: 0 14px 34px rgba(0, 31, 63, 0.09);
+  --app-border: #e8edf3;
+  --app-muted: #64748b;
+  --app-surface: #ffffff;
+  --app-soft: #f6f8fb;
+  --app-success: #0f9f6e;
+  --app-warning: #b7791f;
+  --app-danger: #c24141;
+}
+
+body.dark {
+  color-scheme: dark;
+  --ion-background-color: #07111f;
+  --ion-text-color: #f8fafc;
+  --app-surface: #0c1828;
+  --app-soft: #101e31;
+  --app-border: #223249;
+  --app-muted: #a4b1c4;
+  --app-soft-shadow: 0 14px 34px rgba(0, 0, 0, 0.25);
+}

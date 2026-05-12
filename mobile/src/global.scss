@@ -1,0 +1,208 @@
+/*
+ * App Global CSS
+ * ----------------------------------------------------------------------------
+ * Put style rules here that you want to apply globally. These styles are for
+ * the entire app and not just one component. Additionally, this file can be
+ * used as an entry point to import other CSS/Sass files to be included in the
+ * output CSS.
+ * For more information on global stylesheets, visit the documentation:
+ * https://ionicframework.com/docs/layout/global-stylesheets
+ */
+
+/* Core CSS required for Ionic components to work properly */
+@import "@ionic/angular/css/core.css";
+
+/* Basic CSS for apps built with Ionic */
+@import "@ionic/angular/css/normalize.css";
+@import "@ionic/angular/css/structure.css";
+@import "@ionic/angular/css/typography.css";
+@import "@ionic/angular/css/display.css";
+
+/* Optional CSS utils that can be commented out */
+@import "@ionic/angular/css/padding.css";
+@import "@ionic/angular/css/float-elements.css";
+@import "@ionic/angular/css/text-alignment.css";
+@import "@ionic/angular/css/text-transformation.css";
+@import "@ionic/angular/css/flex-utils.css";
+
+/**
+ * Ionic Dark Mode
+ * -----------------------------------------------------
+ * For more info, please see:
+ * https://ionicframework.com/docs/theming/dark-mode
+ */
+
+/* @import "@ionic/angular/css/palettes/dark.always.css"; */
+@import "@ionic/angular/css/palettes/dark.class.css";
+/* @import "@ionic/angular/css/palettes/dark.system.css"; */
+
+ion-modal.date-picker-modal {
+  --border-radius: 22px 22px 0 0;
+  --height: 78vh;
+  --width: 100%;
+}
+
+ion-modal.date-picker-modal::part(content) {
+  overflow: hidden;
+}
+
+.date-picker-content {
+  align-items: flex-start;
+  background: #ffffff;
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  overflow: auto;
+  padding: 12px 12px calc(18px + env(safe-area-inset-bottom));
+}
+
+.date-picker-content ion-datetime {
+  --background: #ffffff;
+  border-radius: 14px;
+  max-width: 380px;
+  width: 100%;
+}
+
+body.dark .date-picker-content,
+body.ion-palette-dark .date-picker-content {
+  background: #121826;
+}
+
+body.dark .date-picker-content ion-datetime,
+body.ion-palette-dark .date-picker-content ion-datetime {
+  --background: #121826;
+  color: #ffffff;
+}
+
+@media (min-width: 700px) {
+  ion-modal.date-picker-modal {
+    --border-radius: 22px;
+    --height: min(560px, 82vh);
+    --width: min(420px, calc(100vw - 48px));
+  }
+
+  .date-picker-content {
+    align-items: center;
+    padding: 16px;
+  }
+}
+
+.passenger-count-row {
+  display: grid !important;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+}
+
+.passenger-stepper {
+  align-items: center;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1px #dbe4ef;
+  display: grid;
+  grid-template-columns: 38px minmax(34px, 1fr) 38px;
+  justify-self: end;
+  width: 100% !important;
+}
+
+.passenger-stepper button {
+  box-shadow: none;
+}
+
+.passenger-stepper strong {
+  text-align: center;
+}
+
+body.dark .passenger-stepper,
+body.ion-palette-dark .passenger-stepper {
+  background: #0B0F19;
+  box-shadow: inset 0 0 0 1px #293241;
+}
+
+.result-actions {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+}
+
+.result-actions button {
+  font-size: 12px !important;
+  font-weight: 650 !important;
+  min-height: 38px !important;
+}
+
+.result-filters {
+  display: grid !important;
+  gap: 4px !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+.result-filters button {
+  font-size: 10px !important;
+  min-height: 34px !important;
+  overflow: hidden;
+  padding: 6px 4px !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.results-header {
+  overflow: visible !important;
+  position: relative;
+  z-index: 30;
+}
+
+.filter-dropdown {
+  background: #ffffff;
+  border: 1px solid #e8edf3;
+  border-radius: 14px;
+  box-shadow: 0 18px 38px rgba(0, 31, 63, 0.14);
+  left: 0;
+  padding: 8px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 80;
+}
+
+body.dark .filter-dropdown,
+body.ion-palette-dark .filter-dropdown {
+  background: #121826;
+  border-color: #293241;
+}
+
+.results-screen .ride-card {
+  gap: 10px !important;
+  padding: 12px !important;
+}
+
+.results-screen .ride-card img {
+  border-radius: 13px !important;
+  height: 50px !important;
+  width: 50px !important;
+}
+
+.results-screen .ride-main {
+  gap: 6px !important;
+}
+
+.results-screen .ride-topline strong,
+.results-screen .ride-topline span {
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  line-height: 18px !important;
+}
+
+.results-screen .ride-main p {
+  font-size: 12px !important;
+  line-height: 17px !important;
+}
+
+.results-screen .ride-meta {
+  gap: 6px !important;
+  font-size: 11px !important;
+}
+
+.results-screen .badge {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  padding: 3px 7px !important;
+}

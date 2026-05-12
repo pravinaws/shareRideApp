@@ -1,0 +1,3780 @@
+import { Component } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { NavigationEnd, Router } from '@angular/router';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
+import { ToastController } from '@ionic/angular';
+import { addIcons } from 'ionicons';
+import {
+  addCircleOutline,
+  addOutline,
+  alertCircleOutline,
+  arrowBackOutline,
+  calendarOutline,
+  cameraOutline,
+  carOutline,
+  cardOutline,
+  chatbubbleEllipsesOutline,
+  checkmarkCircleOutline,
+  chevronForwardOutline,
+  closeCircleOutline,
+  cloudUploadOutline,
+  createOutline,
+  documentAttachOutline,
+  documentTextOutline,
+  ellipsisVerticalOutline,
+  eyeOutline,
+  flagOutline,
+  funnelOutline,
+  lockClosedOutline,
+  locationOutline,
+  mapOutline,
+  moonOutline,
+  notificationsOutline,
+  optionsOutline,
+  personCircleOutline,
+  removeOutline,
+  searchOutline,
+  settingsOutline,
+  shieldCheckmarkOutline,
+  starOutline,
+  timeOutline,
+  trashOutline,
+  walletOutline,
+} from 'ionicons/icons';
+import {
+  ActionPerformed,
+  PushNotificationSchema,
+  PushNotifications,
+  Token,
+} from '@capacitor/push-notifications';
+import { environment } from '../../environments/environment';
+import { AuthService } from '../services/auth.service';
+import { RealtimeService } from '../services/realtime.service';
+import { RideApiService } from '../services/ride-api.service';
+import { filter } from 'rxjs';
+
+type LocationField = 'from' | 'to';
+type AdminMoneyTab = 'admin' | 'owners' | 'passengers';
+
+interface LocationSuggestion {
+  id: string;
+  title: string;
+  subtitle: string;
+  lat?: number;
+  lng?: number;
+  source: 'map' | 'popular' | 'recent' | 'typed';
+}
+
+interface RideSearchResult {
+  driver: string;
+  photo: string;
+  rating: string;
+  departure: string;
+  arrival: string;
+  route: string;
+  price: string;
+  priceValue: number;
+  seats: number;
+  totalSeats: number;
+  bookedSeats: number;
+  status: 'Full booked' | 'Available';
+  instant: boolean;
+  verified: boolean;
+  owner: string;
+  vehicle: string;
+  vehicleMeta: string;
+  pickup: string;
+  drop: string;
+  liveLocation: string;
+  liveStatus: string;
+  lastLocationUpdate: string;
+  passengers: string[];
+  duration: string;
+  serviceFee: number;
+}
+
+interface PassengerPublicProfile {
+  name: string;
+  photo: string;
+  pickup: string;
+  rating: string;
+  moods: string[];
+  verified: boolean;
+}
+
+interface BookingRequestDetails {
+  passengerName: string;
+  passengerPhoto: string;
+  passengerPhone: string;
+  passengerGovIdNumber: string;
+  verified: boolean;
+  from: string;
+  to: string;
+  route: string;
+  vehicle: string;
+  pickup: string;
+  drop: string;
+}
+
+interface NotificationCenterItem {
+  type: string;
+  title: string;
+  message: string;
+  time: string;
+  unread: boolean;
+  icon: string;
+  bookingDetails?: BookingRequestDetails;
+  action?: 'same_route';
+}
+
+interface ProfileVehicle {
+  vehicleId?: number;
+  make: string;
+  model: string;
+  color: string;
+  plateNumber: string;
+  seats: number;
+  status: string;
+  rcDocumentUrl?: string;
+  insuranceDocumentUrl?: string;
+  frontPhotoUrl?: string;
+  backPhotoUrl?: string;
+}
+
+interface ProfileReview {
+  rating: number;
+  comment: string;
+  reviewer?: {
+    full_name?: string;
+  };
+}
+
+interface ProfileStats {
+  completedRides: number;
+  reviews: number;
+  vehicles: number;
+  savedPassengers: number;
+}
+
+interface AdminUser {
+  id: number;
+  name: string;
+  role: 'owner' | 'passenger';
+  photo: string;
+  phone: string;
+  email?: string;
+  status: 'active' | 'blocked' | 'warning';
+  verification: 'pending' | 'verified' | 'rejected' | 'reupload';
+  rides: number;
+  balance: number;
+  warningCount: number;
+  govIdNumber?: string;
+  documents?: AdminDocument[];
+}
+
+interface AdminDocument {
+  label: string;
+  value: string;
+  status: 'pending' | 'verified' | 'reupload' | 'rejected';
+  previewUrl?: string;
+}
+
+interface AdminVehicleCase {
+  id: number;
+  ownerId: number;
+  owner: string;
+  vehicle: string;
+  plate: string;
+  documents: string;
+  status: 'pending' | 'verified' | 'reupload' | 'rejected';
+  color?: string;
+  seats?: number;
+  documentItems?: AdminDocument[];
+}
+
+interface AdminTour {
+  id: number;
+  type: 'Passenger tour' | 'Vehicle tour';
+  route: string;
+  user: string;
+  vehicle: string;
+  status: string;
+  amount: number;
+}
+
+interface AdminTransaction {
+  id: number;
+  user: string;
+  role: string;
+  title: string;
+  amount: number;
+  status: string;
+  type?: 'Deposit' | 'Withdraw' | 'Refund' | 'Failed' | 'Canceled' | 'Payout' | 'Adjustment';
+  date?: string;
+  time?: string;
+  method?: string;
+  reference?: string;
+}
+
+interface AdminLog {
+  id: number;
+  type: 'Passenger' | 'Owner' | 'Ride' | 'Security' | 'Ads';
+  action: string;
+  actor: string;
+  target: string;
+  priority: 'active' | 'pending' | 'warning' | 'blocked';
+  icon: string;
+  createdAt: string;
+}
+
+interface AdminAd {
+  id: number;
+  name: string;
+  type: string;
+  partner: string;
+  size: string;
+  placement: string;
+  area: string;
+  state: string;
+  startDate: string;
+  endDate: string;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  status: 'active' | 'disabled' | 'expired';
+}
+
+interface AdPartner {
+  id: number;
+  partnerName: string;
+  companyName: string;
+  contactPerson: string;
+  mobile: string;
+  email: string;
+  address: string;
+  gstNumber: string;
+  type: string;
+  priority: 'High' | 'Medium' | 'Low';
+  status: 'active' | 'disabled';
+  startDate: string;
+  endDate: string;
+}
+
+interface AdInvoice {
+  invoiceNumber: string;
+  partnerName: string;
+  adName: string;
+  placement: string;
+  runningDays: number;
+  baseAmount: number;
+  gst: number;
+  finalAmount: number;
+  paymentStatus: 'Pending' | 'Paid' | 'Failed' | 'Refunded' | 'Partial Payment';
+  paymentMode: string;
+  transactionRef: string;
+}
+
+interface AdHistory {
+  id: number;
+  adName: string;
+  action: string;
+  details: string;
+  adminUser: string;
+  createdAt: string;
+}
+
+@Component({
+  selector: 'app-home',
+  templateUrl: 'home.page.html',
+  styleUrls: ['home.page.scss'],
+  standalone: false,
+})
+export class HomePage {
+  apiUrl = environment.apiUrl;
+  platform = Capacitor.getPlatform();
+  showIntroSplash = Capacitor.isNativePlatform();
+  status = 'Ready';
+  isLoggedIn = false;
+  liveActivity = 'Realtime channel connected';
+  unreadCount = 2;
+  authMode: 'login' | 'signup' = 'login';
+  currentRouteValue = '/login';
+  otpSent = false;
+  otpSending = false;
+  loginSubmitting = false;
+  loginForm = {
+    fullName: 'Harshala',
+    phone: '9970795914',
+    otp: '',
+    role: 'driver' as 'passenger' | 'driver',
+  };
+  profileLoading = false;
+  profileSaving = false;
+  profile = {
+    fullName: 'Harshala',
+    age: 29,
+    rating: 4.9,
+    role: 'driver',
+    verificationStatus: 'verified',
+    phone: '+919970795914',
+    email: 'harshala@example.com',
+    photoUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=256&q=80',
+    bio: 'Clean car, safe driving, and punctual pickup. Prefer verified travellers for office and intercity routes.',
+    memberSince: '2026',
+    govIdNumber: '',
+    govIdFrontUrl: '',
+    govIdBackUrl: '',
+    passengerVerificationStatus: 'pending',
+    stats: {
+      completedRides: 42,
+      reviews: 18,
+      vehicles: 1,
+      savedPassengers: 7,
+    },
+    travelPreferences: {
+      music: 'Soft music',
+      chat: 'Friendly chat',
+      smoking: 'No smoking',
+      pets: 'Ask first',
+    },
+    reviews: [
+      {
+        rating: 5,
+        comment: 'Very professional and smooth ride. Pickup was exactly on time.',
+        reviewer: { full_name: 'Aarav Mehta' },
+      },
+    ] as ProfileReview[],
+  };
+  vehicleForm = {
+    vehicleId: null as number | null,
+    make: '',
+    model: '',
+    color: '',
+    plateNumber: '',
+    seats: 4,
+    rcDocumentUrl: '',
+    insuranceDocumentUrl: '',
+    frontPhotoUrl: '',
+    backPhotoUrl: '',
+    status: 'pending',
+  };
+  vehicleCatalog = [
+    {
+      make: 'Maruti Suzuki',
+      models: [
+        { name: 'Alto K10', seats: 5 },
+        { name: 'Swift', seats: 5 },
+        { name: 'Baleno', seats: 5 },
+        { name: 'Dzire', seats: 5 },
+        { name: 'Brezza', seats: 5 },
+        { name: 'Ertiga', seats: 7 },
+        { name: 'XL6', seats: 6 },
+      ],
+    },
+    {
+      make: 'Hyundai',
+      models: [
+        { name: 'Grand i10 Nios', seats: 5 },
+        { name: 'i20', seats: 5 },
+        { name: 'Aura', seats: 5 },
+        { name: 'Verna', seats: 5 },
+        { name: 'Venue', seats: 5 },
+        { name: 'Creta', seats: 5 },
+        { name: 'Alcazar', seats: 7 },
+      ],
+    },
+    {
+      make: 'Tata',
+      models: [
+        { name: 'Tiago', seats: 5 },
+        { name: 'Tigor', seats: 5 },
+        { name: 'Punch', seats: 5 },
+        { name: 'Nexon', seats: 5 },
+        { name: 'Altroz', seats: 5 },
+        { name: 'Harrier', seats: 5 },
+        { name: 'Safari', seats: 7 },
+      ],
+    },
+    {
+      make: 'Mahindra',
+      models: [
+        { name: 'XUV 3XO', seats: 5 },
+        { name: 'Bolero Neo', seats: 7 },
+        { name: 'Scorpio N', seats: 7 },
+        { name: 'Thar', seats: 4 },
+        { name: 'XUV700', seats: 7 },
+        { name: 'Marazzo', seats: 7 },
+      ],
+    },
+    {
+      make: 'Toyota',
+      models: [
+        { name: 'Glanza', seats: 5 },
+        { name: 'Urban Cruiser Hyryder', seats: 5 },
+        { name: 'Rumion', seats: 7 },
+        { name: 'Innova Crysta', seats: 7 },
+        { name: 'Innova Hycross', seats: 7 },
+        { name: 'Fortuner', seats: 7 },
+      ],
+    },
+    {
+      make: 'Honda',
+      models: [
+        { name: 'Amaze', seats: 5 },
+        { name: 'City', seats: 5 },
+        { name: 'Elevate', seats: 5 },
+      ],
+    },
+    {
+      make: 'Kia',
+      models: [
+        { name: 'Sonet', seats: 5 },
+        { name: 'Seltos', seats: 5 },
+        { name: 'Carens', seats: 7 },
+        { name: 'Carnival', seats: 7 },
+      ],
+    },
+    {
+      make: 'Renault',
+      models: [
+        { name: 'Kwid', seats: 5 },
+        { name: 'Kiger', seats: 5 },
+        { name: 'Triber', seats: 7 },
+      ],
+    },
+    {
+      make: 'Nissan',
+      models: [
+        { name: 'Magnite', seats: 5 },
+        { name: 'Kicks', seats: 5 },
+      ],
+    },
+    {
+      make: 'Skoda',
+      models: [
+        { name: 'Slavia', seats: 5 },
+        { name: 'Kushaq', seats: 5 },
+        { name: 'Kodiaq', seats: 7 },
+      ],
+    },
+    {
+      make: 'Volkswagen',
+      models: [
+        { name: 'Polo', seats: 5 },
+        { name: 'Virtus', seats: 5 },
+        { name: 'Taigun', seats: 5 },
+        { name: 'Tiguan', seats: 5 },
+      ],
+    },
+    {
+      make: 'MG',
+      models: [
+        { name: 'Astor', seats: 5 },
+        { name: 'Hector', seats: 5 },
+        { name: 'Hector Plus', seats: 7 },
+        { name: 'Gloster', seats: 7 },
+      ],
+    },
+    {
+      make: 'Citroen',
+      models: [
+        { name: 'C3', seats: 5 },
+        { name: 'eC3', seats: 5 },
+        { name: 'C3 Aircross', seats: 7 },
+        { name: 'Basalt', seats: 5 },
+        { name: 'C5 Aircross', seats: 5 },
+      ],
+    },
+    {
+      make: 'Jeep',
+      models: [
+        { name: 'Compass', seats: 5 },
+        { name: 'Meridian', seats: 7 },
+        { name: 'Wrangler', seats: 5 },
+        { name: 'Grand Cherokee', seats: 5 },
+      ],
+    },
+    {
+      make: 'BYD',
+      models: [
+        { name: 'Atto 3', seats: 5 },
+        { name: 'e6', seats: 5 },
+        { name: 'Seal', seats: 5 },
+      ],
+    },
+    {
+      make: 'Mercedes-Benz',
+      models: [
+        { name: 'A-Class Limousine', seats: 5 },
+        { name: 'C-Class', seats: 5 },
+        { name: 'E-Class', seats: 5 },
+        { name: 'GLA', seats: 5 },
+        { name: 'GLC', seats: 5 },
+        { name: 'GLE', seats: 5 },
+        { name: 'GLS', seats: 7 },
+      ],
+    },
+    {
+      make: 'BMW',
+      models: [
+        { name: '2 Series Gran Coupe', seats: 5 },
+        { name: '3 Series', seats: 5 },
+        { name: '5 Series', seats: 5 },
+        { name: 'X1', seats: 5 },
+        { name: 'X3', seats: 5 },
+        { name: 'X5', seats: 5 },
+        { name: 'X7', seats: 7 },
+      ],
+    },
+    {
+      make: 'Audi',
+      models: [
+        { name: 'A4', seats: 5 },
+        { name: 'A6', seats: 5 },
+        { name: 'Q3', seats: 5 },
+        { name: 'Q5', seats: 5 },
+        { name: 'Q7', seats: 7 },
+      ],
+    },
+    {
+      make: 'Volvo',
+      models: [
+        { name: 'XC40', seats: 5 },
+        { name: 'XC60', seats: 5 },
+        { name: 'XC90', seats: 7 },
+        { name: 'S90', seats: 5 },
+      ],
+    },
+    {
+      make: 'Lexus',
+      models: [
+        { name: 'ES', seats: 5 },
+        { name: 'NX', seats: 5 },
+        { name: 'RX', seats: 5 },
+        { name: 'LX', seats: 7 },
+      ],
+    },
+    {
+      make: 'Isuzu',
+      models: [
+        { name: 'D-Max V-Cross', seats: 5 },
+        { name: 'MU-X', seats: 7 },
+      ],
+    },
+    {
+      make: 'Force Motors',
+      models: [
+        { name: 'Gurkha', seats: 4 },
+        { name: 'Trax Cruiser', seats: 9 },
+        { name: 'Traveller', seats: 12 },
+      ],
+    },
+    {
+      make: 'Ford',
+      models: [
+        { name: 'Figo', seats: 5 },
+        { name: 'Aspire', seats: 5 },
+        { name: 'Freestyle', seats: 5 },
+        { name: 'EcoSport', seats: 5 },
+        { name: 'Endeavour', seats: 7 },
+      ],
+    },
+    {
+      make: 'Chevrolet',
+      models: [
+        { name: 'Beat', seats: 5 },
+        { name: 'Spark', seats: 5 },
+        { name: 'Sail', seats: 5 },
+        { name: 'Enjoy', seats: 7 },
+        { name: 'Cruze', seats: 5 },
+      ],
+    },
+    {
+      make: 'Fiat',
+      models: [
+        { name: 'Punto', seats: 5 },
+        { name: 'Linea', seats: 5 },
+        { name: 'Avventura', seats: 5 },
+      ],
+    },
+    {
+      make: 'Datsun',
+      models: [
+        { name: 'Redi-GO', seats: 5 },
+        { name: 'GO', seats: 5 },
+        { name: 'GO+', seats: 7 },
+      ],
+    },
+    {
+      make: 'Mitsubishi',
+      models: [
+        { name: 'Pajero Sport', seats: 7 },
+        { name: 'Outlander', seats: 7 },
+        { name: 'Lancer', seats: 5 },
+      ],
+    },
+    {
+      make: 'Jaguar',
+      models: [
+        { name: 'XE', seats: 5 },
+        { name: 'XF', seats: 5 },
+        { name: 'F-Pace', seats: 5 },
+      ],
+    },
+    {
+      make: 'Land Rover',
+      models: [
+        { name: 'Discovery Sport', seats: 7 },
+        { name: 'Defender', seats: 7 },
+        { name: 'Range Rover Evoque', seats: 5 },
+        { name: 'Range Rover Velar', seats: 5 },
+      ],
+    },
+    {
+      make: 'Mini',
+      models: [
+        { name: 'Cooper', seats: 4 },
+        { name: 'Countryman', seats: 5 },
+      ],
+    },
+    {
+      make: 'Porsche',
+      models: [
+        { name: 'Macan', seats: 5 },
+        { name: 'Cayenne', seats: 5 },
+        { name: 'Panamera', seats: 4 },
+      ],
+    },
+  ];
+  vehicleSaving = false;
+  activeVehicleMenuId: string | null = null;
+  editingVehicleKey: string | null = null;
+  activeVehicleLookup: 'make' | 'model' | null = null;
+  token = '';
+  lastNotification = 'None yet';
+  deviceName = `${this.platform}-${Math.random().toString(16).slice(2, 8)}`;
+  activeTab: 'search' | 'publish' | 'yourRides' | 'inbox' | 'profile' = 'search';
+  searchState: 'ready' | 'loading' | 'error' | 'empty' = 'ready';
+  toastMessage = '';
+  showSuccess = false;
+  isDark = false;
+  datePickerOpen = false;
+  filterDropdownOpen = false;
+  search = {
+    from: 'Bengaluru',
+    to: 'Mysuru',
+    date: 'Today',
+    dateValue: this.toDateInputValue(new Date()),
+    seats: 2,
+  };
+  activeLocationField: LocationField | null = null;
+  locationLoading: Record<LocationField, boolean> = {
+    from: false,
+    to: false,
+  };
+  locationError: Record<LocationField, string> = {
+    from: '',
+    to: '',
+  };
+  locationSuggestions: Record<LocationField, LocationSuggestion[]> = {
+    from: [],
+    to: [],
+  };
+  private readonly locationTimers: Record<LocationField, ReturnType<typeof setTimeout> | undefined> = {
+    from: undefined,
+    to: undefined,
+  };
+  private readonly popularLocations: LocationSuggestion[] = [
+    {
+      id: 'popular-bengaluru',
+      title: 'Bengaluru',
+      subtitle: 'Karnataka, India',
+      lat: 12.9716,
+      lng: 77.5946,
+      source: 'popular',
+    },
+    {
+      id: 'popular-mysuru',
+      title: 'Mysuru',
+      subtitle: 'Karnataka, India',
+      lat: 12.2958,
+      lng: 76.6394,
+      source: 'popular',
+    },
+    {
+      id: 'popular-airport',
+      title: 'Kempegowda International Airport',
+      subtitle: 'Bengaluru, Karnataka',
+      lat: 13.1986,
+      lng: 77.7066,
+      source: 'popular',
+    },
+    {
+      id: 'popular-whitefield',
+      title: 'Whitefield',
+      subtitle: 'Bengaluru, Karnataka',
+      lat: 12.9698,
+      lng: 77.75,
+      source: 'popular',
+    },
+    {
+      id: 'popular-hsr',
+      title: 'HSR Layout',
+      subtitle: 'Bengaluru, Karnataka',
+      lat: 12.9116,
+      lng: 77.6474,
+      source: 'popular',
+    },
+    {
+      id: 'popular-electronic-city',
+      title: 'Electronic City',
+      subtitle: 'Bengaluru, Karnataka',
+      lat: 12.8452,
+      lng: 77.6602,
+      source: 'popular',
+    },
+  ];
+  publishStep = 1;
+  steps = ['Route', 'Time', 'Seats', 'Confirm'];
+  rides = [
+    {
+      driver: 'Aarav Mehta',
+      route: 'Bengaluru to Mysuru',
+      time: '08:30 AM',
+      price: 'INR 420',
+      seats: 3,
+      rating: '4.9',
+      verified: true,
+      badge: 'Fastest',
+    },
+    {
+      driver: 'Nisha Rao',
+      route: 'Indiranagar to Mandya',
+      time: '10:15 AM',
+      price: 'INR 360',
+      seats: 2,
+      rating: '4.8',
+      verified: true,
+      badge: 'Eco',
+    },
+  ];
+  recentSearches = [
+    { from: 'Bengaluru', to: 'Mysuru', date: 'Today', passengers: 2 },
+    { from: 'HSR Layout', to: 'Electronic City', date: 'Tomorrow', passengers: 1 },
+    { from: 'Whitefield', to: 'Airport', date: 'Fri, 8 May', passengers: 3 },
+  ];
+  sponsoredAds = [
+    {
+      label: 'Wallet offer',
+      title: 'Save 15% on your next ride',
+      body: 'Use FastPay for verified shared rides this week.',
+      cta: 'Apply',
+      variant: 'default',
+    },
+    {
+      label: 'Premium',
+      title: 'Priority pickup lanes',
+      body: 'Book clean, rated cars for office commutes.',
+      cta: 'Explore',
+      variant: 'alt',
+    },
+  ];
+  chats = [
+    { id: 1, from: 'driver', text: 'Hi, I can pick you near Metro Gate 2.', time: '09:10' },
+    { id: 2, from: 'me', text: 'Perfect. I will be there 10 minutes early.', time: '09:11' },
+    { id: 3, from: 'driver', text: 'Great, ride confirmed.', time: '09:12' },
+  ] as Array<{
+    id: number;
+    from: 'driver' | 'me';
+    text: string;
+    time: string;
+    attachment?: string;
+    attachmentType?: 'image' | 'file';
+    previewUrl?: string;
+  }>;
+  chatDraft = '';
+  attachedFileName = '';
+  attachedFileType: 'image' | 'file' = 'file';
+  attachedPreviewUrl = '';
+  settings = [
+    'Saved payment methods',
+    'Identity verification',
+    'Notification preferences',
+    'Privacy and safety',
+  ];
+  rideTabs = ['Upcoming', 'Past', 'Archived'];
+  activeRideTab = 'Upcoming';
+  managedRides = [
+    {
+      tab: 'Upcoming',
+      driver: 'Aarav Mehta',
+      image: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22 viewBox=%220 0 80 80%22%3E%3Crect width=%2280%22 height=%2280%22 rx=%2224%22 fill=%22%23001F3F%22/%3E%3Ctext x=%2240%22 y=%2248%22 text-anchor=%22middle%22 font-family=%22Arial%22 font-size=%2228%22 font-weight=%22700%22 fill=%22white%22%3EAM%3C/text%3E%3C/svg%3E',
+      route: 'Bengaluru to Mysuru',
+      date: 'Today',
+      time: '08:30 AM',
+      price: 'INR 420',
+      status: 'Confirmed',
+    },
+    {
+      tab: 'Past',
+      driver: 'Nisha Rao',
+      image: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22 viewBox=%220 0 80 80%22%3E%3Crect width=%2280%22 height=%2280%22 rx=%2224%22 fill=%22%23123E68%22/%3E%3Ctext x=%2240%22 y=%2248%22 text-anchor=%22middle%22 font-family=%22Arial%22 font-size=%2228%22 font-weight=%22700%22 fill=%22white%22%3ENR%3C/text%3E%3C/svg%3E',
+      route: 'Airport to Whitefield',
+      date: '5 May',
+      time: '06:10 PM',
+      price: 'INR 680',
+      status: 'Completed',
+    },
+  ];
+  conversations = [
+    {
+      name: 'Aarav Mehta',
+      image: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22 viewBox=%220 0 80 80%22%3E%3Crect width=%2280%22 height=%2280%22 rx=%2224%22 fill=%22%23001F3F%22/%3E%3Ctext x=%2240%22 y=%2248%22 text-anchor=%22middle%22 font-family=%22Arial%22 font-size=%2228%22 font-weight=%22700%22 fill=%22white%22%3EAM%3C/text%3E%3C/svg%3E',
+      trip: 'Bengaluru to Mysuru',
+      last: 'I will reach pickup in 8 minutes.',
+      time: '09:12',
+      unread: 2,
+      seen: false,
+    },
+    {
+      name: 'Nisha Rao',
+      image: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22 viewBox=%220 0 80 80%22%3E%3Crect width=%2280%22 height=%2280%22 rx=%2224%22 fill=%22%23123E68%22/%3E%3Ctext x=%2240%22 y=%2248%22 text-anchor=%22middle%22 font-family=%22Arial%22 font-size=%2228%22 font-weight=%22700%22 fill=%22white%22%3ENR%3C/text%3E%3C/svg%3E',
+      trip: 'Airport transfer',
+      last: 'Thanks for booking.',
+      time: 'Yesterday',
+      unread: 0,
+      seen: true,
+    },
+  ];
+  payments = [
+    { brand: 'Visa', last4: '4242', label: 'Primary card', status: 'Active' },
+    { brand: 'UPI', last4: 'harshala@upi', label: 'Fast refunds', status: 'Verified' },
+  ];
+  walletBalance = 2480;
+  rideDetailsBackRoute = '/results';
+  selectedBookingRequest: BookingRequestDetails | null = null;
+  ownerProfileOpen = false;
+  selectedPassengerProfile: PassengerPublicProfile | null = null;
+  selectedRideMode: 'active' | 'past' = 'active';
+  pastRideRating = 0;
+  pastRideFeedback = '';
+  transactions = [
+    { title: 'Mysuru ride booking', amount: '- INR 420', status: 'Payment success', date: 'Today' },
+    { title: 'Airport ride refund', amount: '+ INR 180', status: 'Refund initiated', date: '5 May' },
+  ];
+  notificationCenter: NotificationCenterItem[] = [
+    { type: 'Ride booked', title: 'Ride booking confirmed', message: 'Your seat to Mysuru is confirmed.', time: 'Now', unread: true, icon: 'checkmark-circle-outline' },
+    { type: 'Message received', title: 'New driver message', message: 'Aarav shared pickup timing.', time: '5m', unread: true, icon: 'chatbubble-ellipses-outline' },
+    { type: 'Ride request', title: 'Passenger requested a seat', message: 'Open to review passenger details and route.', time: '8m', unread: true, icon: 'person-circle-outline' },
+    { type: 'Ride confirmed', title: 'Ride confirmed by owner', message: 'Your booking is confirmed for the same route.', time: '14m', unread: false, icon: 'checkmark-circle-outline' },
+    { type: 'Ride rejected', title: 'Ride request rejected', message: 'Try another available owner on this route.', time: '25m', unread: false, icon: 'alert-circle-outline' },
+    { type: 'Ride canceled', title: 'Passenger canceled ride', message: 'Seat availability was updated for owner and passengers.', time: '35m', unread: false, icon: 'close-circle-outline' },
+    { type: 'Vehicle full', title: 'Vehicle fully booked', message: 'This vehicle has no seats left.', time: '45m', unread: false, icon: 'car-outline' },
+    { type: 'Verification', title: 'Verification status updated', message: 'Your ID or vehicle verification status changed.', time: '1h', unread: false, icon: 'shield-checkmark-outline' },
+    { type: 'Same route ride', title: 'New ride available on your route', message: 'Tap to view available rides from Your Rides.', time: '2h', unread: false, icon: 'notifications-outline', action: 'same_route' },
+    { type: 'Payment success', title: 'Payment successful', message: 'INR 420 was paid securely.', time: '3h', unread: false, icon: 'wallet-outline' },
+    { type: 'Rating reminder', title: 'Rate your ride', message: 'Tell us about your last trip.', time: 'Yesterday', unread: false, icon: 'star-outline' },
+  ];
+  accountSections = [
+    { title: 'Personal details', icon: 'person-circle-outline', route: '/profile' },
+    { title: 'Admin dashboard', icon: 'settings-outline', route: '/admin' },
+    { title: 'Payments', icon: 'wallet-outline', route: '/payments' },
+    { title: 'Notifications', icon: 'notifications-outline', route: '/notifications' },
+    { title: 'Security', icon: 'lock-closed-outline', route: '/settings' },
+    { title: 'Privacy', icon: 'shield-checkmark-outline', route: '/settings' },
+    { title: 'Dark mode', icon: 'moon-outline', route: '/settings' },
+  ];
+  vehicles = [
+    {
+      vehicleId: 1,
+      make: 'Hyundai',
+      model: 'Verna',
+      color: 'White',
+      plateNumber: 'KA 05 MK 2281',
+      seats: 4,
+      status: 'verified',
+      rcDocumentUrl: 'RC uploaded',
+      insuranceDocumentUrl: 'Insurance uploaded',
+      frontPhotoUrl: 'Front photo uploaded',
+      backPhotoUrl: 'Back photo uploaded',
+    },
+    {
+      vehicleId: 2,
+      make: 'Maruti',
+      model: 'Baleno',
+      color: 'Blue',
+      plateNumber: 'KA 03 NR 4108',
+      seats: 4,
+      status: 'pending',
+      rcDocumentUrl: 'RC uploaded',
+      insuranceDocumentUrl: 'Insurance uploaded',
+      frontPhotoUrl: 'Front photo uploaded',
+      backPhotoUrl: 'Back photo uploaded',
+    },
+  ] as ProfileVehicle[];
+  notificationFlow = [
+    { title: 'Ride requested', status: 'Queued', tone: 'pending' },
+    { title: 'Driver accepted', status: 'Push sent', tone: 'success' },
+    { title: 'Pickup reminder', status: 'Scheduled', tone: 'pending' },
+  ];
+  filters = [
+    { key: 'price', label: 'Price', active: true },
+    { key: 'departure', label: 'Departure Time', active: false },
+    { key: 'verified', label: 'Verified Drivers', active: true },
+    { key: 'instant', label: 'Instant Booking', active: true },
+  ];
+  activeAdminTab = 'overview';
+  adminTabs = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'owners', label: 'Owners' },
+    { key: 'passengers', label: 'Passengers' },
+    { key: 'verify', label: 'Verify' },
+    { key: 'tours', label: 'Tours' },
+    { key: 'money', label: 'Money' },
+    { key: 'logs', label: 'Logs' },
+    { key: 'ads', label: 'Ads' },
+    { key: 'partners', label: 'Partners' },
+    { key: 'billing', label: 'Billing' },
+    { key: 'analytics', label: 'Analytics' },
+  ];
+  adminOwners: AdminUser[] = [
+    {
+      id: 1,
+      name: 'Harshala',
+      role: 'owner',
+      photo: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=256&q=80',
+      phone: '+91 99707 95914',
+      email: 'harshala@example.com',
+      status: 'active',
+      verification: 'verified',
+      rides: 42,
+      balance: 12840,
+      warningCount: 0,
+      govIdNumber: 'OWNER-VERIFIED-001',
+      documents: [
+        { label: 'Owner Gov ID front', value: 'Uploaded', status: 'verified' },
+        { label: 'Owner Gov ID back', value: 'Uploaded', status: 'verified' },
+        { label: 'Driving license', value: 'Uploaded', status: 'verified' },
+      ],
+    },
+    {
+      id: 2,
+      name: 'Aarav Mehta',
+      role: 'owner',
+      photo: this.avatarForName('Aarav Mehta'),
+      phone: '+91 90000 11111',
+      email: 'aarav@example.com',
+      status: 'warning',
+      verification: 'verified',
+      rides: 128,
+      balance: 24620,
+      warningCount: 1,
+      govIdNumber: 'OWNER-VERIFIED-002',
+      documents: [
+        { label: 'Owner Gov ID front', value: 'Uploaded', status: 'verified' },
+        { label: 'Owner Gov ID back', value: 'Uploaded', status: 'verified' },
+        { label: 'Driving license', value: 'Uploaded', status: 'pending' },
+      ],
+    },
+  ];
+  adminPassengers: AdminUser[] = [
+    {
+      id: 21,
+      name: 'Riya Sharma',
+      role: 'passenger',
+      photo: this.avatarForName('Riya Sharma'),
+      phone: '+91 98888 12001',
+      email: 'riya@example.com',
+      status: 'active',
+      verification: 'pending',
+      rides: 18,
+      balance: 2480,
+      warningCount: 0,
+      govIdNumber: 'PASS-PENDING-021',
+      documents: [
+        { label: 'Passenger Gov ID front', value: 'Uploaded', status: 'pending' },
+        { label: 'Passenger Gov ID back', value: 'Uploaded', status: 'pending' },
+      ],
+    },
+    {
+      id: 22,
+      name: 'Dev Patel',
+      role: 'passenger',
+      photo: this.avatarForName('Dev Patel'),
+      phone: '+91 97777 23002',
+      email: 'dev@example.com',
+      status: 'active',
+      verification: 'verified',
+      rides: 31,
+      balance: 920,
+      warningCount: 0,
+      govIdNumber: 'PASS-VERIFIED-022',
+      documents: [
+        { label: 'Passenger Gov ID front', value: 'Uploaded', status: 'verified' },
+        { label: 'Passenger Gov ID back', value: 'Uploaded', status: 'verified' },
+      ],
+    },
+  ];
+  adminVehicleCases: AdminVehicleCase[] = [
+    {
+      id: 1,
+      ownerId: 1,
+      owner: 'Harshala',
+      vehicle: 'Hyundai Verna',
+      plate: 'KA 05 MK 2281',
+      documents: 'RC, front, back verified',
+      status: 'verified',
+      color: 'White',
+      seats: 4,
+      documentItems: [
+        { label: 'RC book', value: 'KA 05 MK 2281', status: 'verified' },
+        { label: 'Vehicle front photo', value: 'White Hyundai Verna front', status: 'verified' },
+        { label: 'Vehicle back photo', value: 'White Hyundai Verna back', status: 'verified' },
+        { label: 'Insurance', value: 'Insurance uploaded', status: 'verified' },
+      ],
+    },
+    {
+      id: 2,
+      ownerId: 2,
+      owner: 'Aarav Mehta',
+      vehicle: 'Maruti Baleno',
+      plate: 'KA 03 NR 4108',
+      documents: 'Insurance optional, RC uploaded',
+      status: 'pending',
+      color: 'Blue',
+      seats: 4,
+      documentItems: [
+        { label: 'RC book', value: 'KA 03 NR 4108', status: 'pending' },
+        { label: 'Vehicle front photo', value: 'Blue Maruti Baleno front', status: 'pending' },
+        { label: 'Vehicle back photo', value: 'Blue Maruti Baleno back', status: 'pending' },
+        { label: 'Insurance', value: 'Optional insurance uploaded', status: 'pending' },
+      ],
+    },
+  ];
+  adminTours: AdminTour[] = [
+    { id: 1, type: 'Vehicle tour', route: 'Bengaluru to Mysuru', user: 'Aarav Mehta', vehicle: 'Hyundai Verna', status: 'Live', amount: 1680 },
+    { id: 2, type: 'Passenger tour', route: 'Airport to Whitefield', user: 'Riya Sharma', vehicle: 'Maruti Baleno', status: 'Completed', amount: 680 },
+    { id: 3, type: 'Vehicle tour', route: 'Whitefield to Mysuru', user: 'Kabir Singh', vehicle: 'Toyota Glanza', status: 'Dispute check', amount: 1560 },
+  ];
+  adminTransactions: AdminTransaction[] = [
+    { id: 1, user: 'Riya Sharma', role: 'Passenger', title: 'Seat booking debit', amount: -420, status: 'Payment success' },
+    { id: 2, user: 'Aarav Mehta', role: 'Owner', title: 'Driver payout credited', amount: 1260, status: 'Credited' },
+    { id: 3, user: 'Dev Patel', role: 'Passenger', title: 'Refund initiated', amount: 180, status: 'Refund pending' },
+  ];
+  adminWalletTransactions: AdminTransaction[] = [
+    { id: 101, user: 'Admin Float', role: 'Admin', title: 'Opening wallet float', amount: 25000, status: 'Credited', type: 'Deposit', date: '11 May 2026', time: '09:00 AM', method: 'Bank transfer', reference: 'ADM-FLT-1001' },
+    { id: 102, user: 'Admin Float', role: 'Admin', title: 'Gateway settlement failed', amount: 0, status: 'Failed', type: 'Failed', date: '11 May 2026', time: '09:18 AM', method: 'Razorpay', reference: 'ADM-FAIL-1002' },
+    { id: 103, user: 'Admin Float', role: 'Admin', title: 'Canceled duplicate credit', amount: -1200, status: 'Canceled', type: 'Canceled', date: '11 May 2026', time: '10:04 AM', method: 'Admin action', reference: 'ADM-CAN-1003' },
+    { id: 104, user: 'Aarav Mehta', role: 'Owner', title: 'Driver payout credited', amount: 1260, status: 'Credited', type: 'Payout', date: '11 May 2026', time: '10:20 AM', method: 'UPI', reference: 'OWN-PAY-2201' },
+    { id: 105, user: 'Aarav Mehta', role: 'Owner', title: 'Owner wallet withdrawal', amount: -800, status: 'Paid', type: 'Withdraw', date: '11 May 2026', time: '11:05 AM', method: 'Bank transfer', reference: 'OWN-WD-2202' },
+    { id: 106, user: 'Kabir Singh', role: 'Owner', title: 'Payout refund reversal', amount: -320, status: 'Refunded', type: 'Refund', date: '10 May 2026', time: '07:42 PM', method: 'Wallet', reference: 'OWN-REF-2203' },
+    { id: 107, user: 'Riya Sharma', role: 'Passenger', title: 'Wallet money added', amount: 2000, status: 'Payment success', type: 'Deposit', date: '11 May 2026', time: '09:35 AM', method: 'UPI', reference: 'PAS-DEP-3301' },
+    { id: 108, user: 'Dev Patel', role: 'Passenger', title: 'Wallet top-up via UPI', amount: 1000, status: 'Payment success', type: 'Deposit', date: '11 May 2026', time: '09:52 AM', method: 'UPI', reference: 'PAS-DEP-3302' },
+    { id: 109, user: 'Riya Sharma', role: 'Passenger', title: 'Ride cancellation refund', amount: 420, status: 'Refunded', type: 'Refund', date: '10 May 2026', time: '06:15 PM', method: 'Wallet', reference: 'PAS-REF-3303' },
+    { id: 110, user: 'Dev Patel', role: 'Passenger', title: 'Failed card wallet add', amount: 0, status: 'Failed', type: 'Failed', date: '10 May 2026', time: '02:40 PM', method: 'Card', reference: 'PAS-FAIL-3304' },
+    { id: 111, user: 'Riya Sharma', role: 'Passenger', title: 'Canceled wallet withdrawal', amount: 0, status: 'Canceled', type: 'Canceled', date: '09 May 2026', time: '08:10 PM', method: 'Admin action', reference: 'PAS-CAN-3305' },
+  ];
+  adminMoneyTabs: { key: AdminMoneyTab; label: string }[] = [
+    { key: 'admin', label: 'Admin' },
+    { key: 'owners', label: 'Owners' },
+    { key: 'passengers', label: 'Passengers' },
+  ];
+  adminMoneyTab: AdminMoneyTab = 'admin';
+  adminMoneyPage = 1;
+  adminMoneyPageSize = 5;
+  selectedAdminUser: AdminUser | null = null;
+  selectedAdminVehicle: AdminVehicleCase | null = null;
+  selectedAdminDocument: AdminDocument | null = null;
+  adminLogSearch = '';
+  adminLogType = 'All';
+  adminLogPage = 1;
+  adminLogPageSize = 4;
+  adminLogs: AdminLog[] = [
+    { id: 1, type: 'Passenger', action: 'Ride booking requested', actor: 'Riya Sharma', target: 'Bengaluru to Mysuru', priority: 'active', icon: 'car-outline', createdAt: 'Today 09:12' },
+    { id: 2, type: 'Owner', action: 'Vehicle approved', actor: 'Admin', target: 'Hyundai Verna KA 05 MK 2281', priority: 'active', icon: 'shield-checkmark-outline', createdAt: 'Today 08:30' },
+    { id: 3, type: 'Ride', action: 'Ride cancelled by passenger', actor: 'Dev Patel', target: 'Airport transfer', priority: 'warning', icon: 'alert-circle-outline', createdAt: 'Yesterday 18:20' },
+    { id: 4, type: 'Security', action: 'Second warning issued', actor: 'Admin', target: 'Owner account', priority: 'blocked', icon: 'lock-closed-outline', createdAt: 'Yesterday 16:05' },
+    { id: 5, type: 'Ads', action: 'Banner ad renewed', actor: 'Admin', target: 'Groww commuter offer', priority: 'pending', icon: 'time-outline', createdAt: 'Yesterday 12:40' },
+  ];
+  adForm = {
+    name: 'Weekend route offer',
+    type: 'Banner',
+    size: '320x100',
+    placement: 'Search Page',
+    area: 'All India',
+    redirectUrl: 'https://example.com/offer',
+  };
+  adminAds: AdminAd[] = [
+    { id: 1, name: 'Groww commuter offer', type: 'Banner', partner: 'Groww Ads', size: '320x100', placement: 'Search Page', area: 'Bengaluru', state: 'Karnataka', startDate: '2026-05-01', endDate: '2026-05-31', impressions: 18420, clicks: 812, ctr: 4.4, status: 'active' },
+    { id: 2, name: 'AdMob intercity script', type: 'JavaScript', partner: 'Google AdMob', size: '300x250', placement: 'Dashboard', area: 'All India', state: 'All India', startDate: '2026-04-20', endDate: '2026-05-10', impressions: 22890, clicks: 632, ctr: 2.8, status: 'expired' },
+  ];
+  adPartners: AdPartner[] = [
+    { id: 1, partnerName: 'Groww Ads', companyName: 'Groww Partner Media', contactPerson: 'Neha Shah', mobile: '+91 90000 33333', email: 'ads@groww.example', address: 'Bengaluru, Karnataka', gstNumber: '29ABCDE1234F1Z5', type: 'Paid Partner', priority: 'High', status: 'active', startDate: '2026-05-01', endDate: '2026-11-01' },
+    { id: 2, partnerName: 'Google AdMob', companyName: 'Google India', contactPerson: 'Ad Ops', mobile: '+91 90000 44444', email: 'admob@example.com', address: 'Hyderabad, Telangana', gstNumber: '36ABCDE1234F1Z5', type: 'Script Partner', priority: 'Medium', status: 'active', startDate: '2026-04-01', endDate: '2027-04-01' },
+  ];
+  adInvoices: AdInvoice[] = [
+    { invoiceNumber: 'INV-ADS-1001', partnerName: 'Groww Ads', adName: 'Groww commuter offer', placement: 'Search Page', runningDays: 31, baseAmount: 42000, gst: 7560, finalAmount: 49560, paymentStatus: 'Paid', paymentMode: 'UPI', transactionRef: 'TXN-GRW-8821' },
+    { invoiceNumber: 'INV-ADS-1002', partnerName: 'Google AdMob', adName: 'AdMob intercity script', placement: 'Dashboard', runningDays: 21, baseAmount: 21000, gst: 3780, finalAmount: 24780, paymentStatus: 'Pending', paymentMode: 'Bank transfer', transactionRef: 'Awaiting' },
+  ];
+  adminAdHistory: AdHistory[] = [
+    { id: 1, adName: 'Groww commuter offer', action: 'Created', details: 'Banner uploaded, redirect URL added, Search Page placement scheduled.', adminUser: 'Admin', createdAt: '2026-05-01 10:00' },
+    { id: 2, adName: 'AdMob intercity script', action: 'Script validation', details: 'Script sandboxed and lazy loading enabled.', adminUser: 'Admin', createdAt: '2026-05-02 12:15' },
+    { id: 3, adName: 'Groww commuter offer', action: 'Billing generated', details: 'GST and final invoice amount calculated.', adminUser: 'Admin', createdAt: '2026-05-03 09:30' },
+  ];
+  resultRides: RideSearchResult[] = [
+    {
+      driver: 'Aarav Mehta',
+      photo: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22 viewBox=%220 0 80 80%22%3E%3Crect width=%2280%22 height=%2280%22 rx=%2224%22 fill=%22%23001F3F%22/%3E%3Ctext x=%2240%22 y=%2248%22 text-anchor=%22middle%22 font-family=%22Arial%22 font-size=%2228%22 font-weight=%22700%22 fill=%22white%22%3EAM%3C/text%3E%3C/svg%3E',
+      rating: '4.9',
+      departure: '08:30',
+      arrival: '11:05',
+      route: 'Bengaluru Central to Mysuru Palace Road',
+      price: 'INR 420',
+      priceValue: 420,
+      seats: 3,
+      totalSeats: 4,
+      bookedSeats: 1,
+      status: 'Available',
+      instant: true,
+      verified: true,
+      owner: 'Aarav Mehta',
+      vehicle: 'Hyundai Verna',
+      vehicleMeta: 'White sedan · KA 05 MK 2281',
+      pickup: 'Bengaluru Central Metro Gate 2',
+      drop: 'Mysuru Palace Road, North Entrance',
+      liveLocation: 'Near Deepanjali Nagar, Mysuru Road',
+      liveStatus: 'Driver moving toward pickup',
+      lastLocationUpdate: 'Updated just now',
+      passengers: ['Riya Sharma'],
+      duration: '2h 35m',
+      serviceFee: 25,
+    },
+    {
+      driver: 'Nisha Rao',
+      photo: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22 viewBox=%220 0 80 80%22%3E%3Crect width=%2280%22 height=%2280%22 rx=%2224%22 fill=%22%23123E68%22/%3E%3Ctext x=%2240%22 y=%2248%22 text-anchor=%22middle%22 font-family=%22Arial%22 font-size=%2228%22 font-weight=%22700%22 fill=%22white%22%3ENR%3C/text%3E%3C/svg%3E',
+      rating: '4.8',
+      departure: '10:15',
+      arrival: '12:40',
+      route: 'Indiranagar Metro to Mandya Bypass',
+      price: 'INR 360',
+      priceValue: 360,
+      seats: 0,
+      totalSeats: 3,
+      bookedSeats: 3,
+      status: 'Full booked',
+      instant: true,
+      verified: true,
+      owner: 'Nisha Rao',
+      vehicle: 'Maruti Baleno',
+      vehicleMeta: 'Blue hatchback · KA 03 NR 4108',
+      pickup: 'Indiranagar Metro, 100 Feet Road',
+      drop: 'Mandya Bypass near service road',
+      liveLocation: 'Near Domlur Flyover',
+      liveStatus: 'Ride is full booked · tracking active for passengers',
+      lastLocationUpdate: 'Updated 1 min ago',
+      passengers: ['Dev Patel', 'Amina Khan', 'Joel Mathew'],
+      duration: '2h 25m',
+      serviceFee: 22,
+    },
+    {
+      driver: 'Kabir Singh',
+      photo: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22 viewBox=%220 0 80 80%22%3E%3Crect width=%2280%22 height=%2280%22 rx=%2224%22 fill=%22%230F766E%22/%3E%3Ctext x=%2240%22 y=%2248%22 text-anchor=%22middle%22 font-family=%22Arial%22 font-size=%2228%22 font-weight=%22700%22 fill=%22white%22%3EKS%3C/text%3E%3C/svg%3E',
+      rating: '4.7',
+      departure: '13:00',
+      arrival: '15:35',
+      route: 'Whitefield to Mysuru Ring Road',
+      price: 'INR 390',
+      priceValue: 390,
+      seats: 1,
+      totalSeats: 4,
+      bookedSeats: 3,
+      status: 'Available',
+      instant: false,
+      verified: true,
+      owner: 'Kabir Singh',
+      vehicle: 'Toyota Glanza',
+      vehicleMeta: 'Silver hatchback · KA 04 KS 7781',
+      pickup: 'Whitefield Main Road, Forum Shantiniketan',
+      drop: 'Mysuru Ring Road, Columbia Asia signal',
+      liveLocation: 'Near Whitefield Main Road',
+      liveStatus: 'Driver waiting near pickup',
+      lastLocationUpdate: 'Updated 2 min ago',
+      passengers: ['Meera Iyer', 'Sahil Jain', 'Anu George'],
+      duration: '2h 35m',
+      serviceFee: 24,
+    },
+  ];
+  selectedRide: RideSearchResult & { trips: number; price: string; priceValue: number } = {
+    driver: 'Aarav Mehta',
+    photo: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22 viewBox=%220 0 80 80%22%3E%3Crect width=%2280%22 height=%2280%22 rx=%2224%22 fill=%22%23001F3F%22/%3E%3Ctext x=%2240%22 y=%2248%22 text-anchor=%22middle%22 font-family=%22Arial%22 font-size=%2228%22 font-weight=%22700%22 fill=%22white%22%3EAM%3C/text%3E%3C/svg%3E',
+    rating: '4.9',
+    trips: 128,
+    verified: true,
+    vehicle: 'Hyundai Verna',
+    vehicleMeta: 'White sedan · KA 05 MK 2281',
+    departure: '08:30',
+    arrival: '11:05',
+    duration: '2h 35m',
+    price: 'INR 420',
+    priceValue: 420,
+    serviceFee: 25,
+    seats: 3,
+    totalSeats: 4,
+    bookedSeats: 1,
+    status: 'Available',
+    instant: true,
+    owner: 'Aarav Mehta',
+    pickup: 'Bengaluru Central Metro Gate 2',
+    drop: 'Mysuru Palace Road, North Entrance',
+    liveLocation: 'Near Deepanjali Nagar, Mysuru Road',
+    liveStatus: 'Driver moving toward pickup',
+    lastLocationUpdate: 'Updated just now',
+    passengers: ['Riya Sharma'],
+    route: 'Bengaluru Central to Mysuru Palace Road',
+  };
+  publishRideForm = {
+    departure: 'Bengaluru Central',
+    destination: 'Mysuru Palace Road',
+  };
+  stops = ['Mandya Bypass'];
+  mapEmbedUrl: SafeResourceUrl;
+  publishFlowStep = 2;
+  private startupPermissionsStarted = false;
+  rideSetup = {
+    seats: 3,
+    pricePerSeat: 420,
+    luggageAllowed: true,
+    instantBooking: true,
+  };
+  travelPreferences = {
+    smokingAllowed: false,
+    petsAllowed: false,
+    music: 'Soft music',
+    chat: 'Friendly chat',
+  };
+  musicOptions = ['Quiet ride', 'Soft music', 'Any music'];
+  chatOptions = ['Quiet', 'Friendly chat', 'Chatty'];
+  showPublishSuccess = false;
+  ridePreferences = [
+    { label: 'Smoking', value: 'No smoking', allowed: false },
+    { label: 'Music', value: 'Soft music ok', allowed: true },
+    { label: 'Pets', value: 'Ask first', allowed: false },
+    { label: 'Chattiness', value: 'Friendly chat', allowed: true },
+  ];
+
+  constructor(
+    private readonly http: HttpClient,
+    private readonly toastController: ToastController,
+    private readonly sanitizer: DomSanitizer,
+    private readonly router: Router,
+    private readonly auth: AuthService,
+    private readonly api: RideApiService,
+    private readonly realtime: RealtimeService,
+  ) {
+    this.mapEmbedUrl = this.buildRouteMapUrl(this.selectedRide.pickup, this.selectedRide.drop);
+    this.currentRouteValue = this.normalizeRoute(this.router.url);
+
+    addIcons({
+      addCircleOutline,
+      addOutline,
+      alertCircleOutline,
+      arrowBackOutline,
+      calendarOutline,
+      cameraOutline,
+      carOutline,
+      cardOutline,
+      chatbubbleEllipsesOutline,
+      checkmarkCircleOutline,
+      chevronForwardOutline,
+      closeCircleOutline,
+      cloudUploadOutline,
+      createOutline,
+      documentAttachOutline,
+      documentTextOutline,
+      ellipsisVerticalOutline,
+      eyeOutline,
+      flagOutline,
+      funnelOutline,
+      lockClosedOutline,
+      locationOutline,
+      mapOutline,
+      moonOutline,
+      notificationsOutline,
+      optionsOutline,
+      personCircleOutline,
+      removeOutline,
+      searchOutline,
+      settingsOutline,
+      shieldCheckmarkOutline,
+      starOutline,
+      timeOutline,
+      trashOutline,
+      walletOutline,
+    });
+
+    this.restoreRealtimeState();
+    this.restoreProfilePhoto();
+    this.bindRealtimeEvents();
+    this.loadProfile();
+    this.router.events
+      .pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd))
+      .subscribe((event) => {
+        this.currentRouteValue = this.normalizeRoute(event.urlAfterRedirects);
+        if (this.currentRouteValue === '/profile') {
+          this.loadProfile();
+        }
+      });
+
+    setInterval(() => {
+      this.liveActivity = `Realtime sync active · ${new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })}`;
+    }, 5000);
+
+    this.startNativeIntroAndPermissions();
+  }
+
+  get currentRoute() {
+    return this.currentRouteValue;
+  }
+
+  private startNativeIntroAndPermissions() {
+    if (!Capacitor.isNativePlatform()) {
+      this.showIntroSplash = false;
+      return;
+    }
+
+    window.setTimeout(() => {
+      this.showIntroSplash = false;
+      this.requestLoginStartupPermissions();
+    }, 4000);
+  }
+
+  private async requestLoginStartupPermissions() {
+    if (!Capacitor.isNativePlatform() || this.startupPermissionsStarted || this.currentRouteValue !== '/login') {
+      return;
+    }
+
+    this.startupPermissionsStarted = true;
+    this.status = 'Checking app permissions...';
+    await this.presentToast('Allow notifications and location for ride updates');
+
+    try {
+      const notificationsReady = await this.requestNativeNotificationPermissions();
+      await this.requestLocationPermission();
+      this.status = notificationsReady ? 'App permissions ready.' : 'Notification permission pending.';
+    } catch {
+      this.status = 'Permissions can be enabled from phone settings.';
+    }
+  }
+
+  private async requestNativeNotificationPermissions() {
+    const localPermission = await LocalNotifications.checkPermissions().catch(() => ({ display: 'prompt' }));
+    if (localPermission.display !== 'granted') {
+      const localRequest = await LocalNotifications.requestPermissions();
+      if (localRequest.display !== 'granted') {
+        return false;
+      }
+    }
+
+    const pushPermission = await PushNotifications.checkPermissions().catch(() => ({ receive: 'prompt' }));
+    if (pushPermission.receive !== 'granted') {
+      const pushRequest = await PushNotifications.requestPermissions();
+      if (pushRequest.receive !== 'granted') {
+        return false;
+      }
+    }
+
+    await this.bindPushListeners();
+    await PushNotifications.register();
+    return true;
+  }
+
+  private requestLocationPermission() {
+    return new Promise<void>((resolve) => {
+      if (!navigator.geolocation) {
+        resolve();
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        () => resolve(),
+        () => resolve(),
+        { enableHighAccuracy: false, maximumAge: 600000, timeout: 6000 },
+      );
+    });
+  }
+
+  private normalizeRoute(url: string) {
+    const path = (url || '').split('?')[0].replace(/\/+$/, '') || '/';
+    if (path === '/home') return '/publish';
+    if (path === '/') return this.auth.isAuthenticated ? '/search' : '/login';
+    return path;
+  }
+
+  private restoreProfilePhoto() {
+    const savedPhotoUrl = localStorage.getItem('rideshare.profilePhotoUrl');
+    if (savedPhotoUrl) {
+      this.profile.photoUrl = savedPhotoUrl;
+    }
+
+    const savedVerification = localStorage.getItem('rideshare.passengerVerification');
+    if (!savedVerification) return;
+
+    try {
+      const verification = JSON.parse(savedVerification);
+      this.profile.govIdNumber = verification.govIdNumber || this.profile.govIdNumber;
+      this.profile.govIdFrontUrl = verification.govIdFrontUrl || this.profile.govIdFrontUrl;
+      this.profile.govIdBackUrl = verification.govIdBackUrl || this.profile.govIdBackUrl;
+      this.profile.passengerVerificationStatus = verification.passengerVerificationStatus || this.profile.passengerVerificationStatus;
+    } catch {
+      localStorage.removeItem('rideshare.passengerVerification');
+    }
+  }
+
+  get publishFlowStepFromRoute() {
+    if (this.currentRoute === '/publish/preferences') {
+      return 3;
+    }
+
+    if (this.currentRoute === '/publish/confirm') {
+      return 4;
+    }
+
+    return 2;
+  }
+
+  get activeNav() {
+    if (this.currentRoute.startsWith('/publish')) {
+      return 'publish';
+    }
+
+    if (this.currentRoute === '/your-rides') {
+      return 'your-rides';
+    }
+
+    if (this.currentRoute === '/inbox' || this.currentRoute === '/chat') {
+      return 'inbox';
+    }
+
+    if (
+      this.currentRoute === '/login' ||
+      this.currentRoute === '/profile' ||
+      this.currentRoute === '/vehicles' ||
+      this.currentRoute === '/settings' ||
+      this.currentRoute === '/admin' ||
+      this.currentRoute === '/payments' ||
+      this.currentRoute === '/notifications'
+    ) {
+      return 'profile';
+    }
+
+    return 'search';
+  }
+
+  goTo(route: string) {
+    this.currentRouteValue = this.normalizeRoute(route);
+    if (route === '/profile') {
+      this.loadProfile();
+    }
+    this.router.navigateByUrl(route);
+  }
+
+  get profilePreferenceList() {
+    return [
+      { label: 'Music', value: this.profile.travelPreferences.music },
+      { label: 'Chat', value: this.profile.travelPreferences.chat },
+      { label: 'Smoking', value: this.profile.travelPreferences.smoking },
+      { label: 'Pets', value: this.profile.travelPreferences.pets },
+    ];
+  }
+
+  get profileBadges() {
+    const badges = ['Phone verified'];
+    if (this.profile.verificationStatus === 'verified') badges.unshift('Identity verified');
+    if (this.isPassengerVerified) badges.unshift('Passenger verified');
+    if (this.profile.email) badges.push('Email verified');
+    return badges;
+  }
+
+  get isPassengerVerified() {
+    return this.profile.passengerVerificationStatus === 'verified';
+  }
+
+  get hasVerifiedPublishVehicle() {
+    return this.vehicles.some((vehicle) => vehicle.vehicleId && this.isVehicleVerified(vehicle));
+  }
+
+  get canPublishRide() {
+    return this.profile.verificationStatus === 'verified' && this.hasVerifiedPublishVehicle;
+  }
+
+  get passengerVerificationLabel() {
+    const status = this.profile.passengerVerificationStatus;
+    return status === 'verified' ? 'Verified' : status === 'rejected' ? 'Rejected' : 'Pending verification';
+  }
+
+  get adminKpis() {
+    const users = [...this.adminOwners, ...this.adminPassengers];
+    return [
+      { label: 'Owners', value: this.adminOwners.length, tone: 'ink' },
+      { label: 'Passengers', value: this.adminPassengers.length, tone: 'blue' },
+      { label: 'Pending verify', value: users.filter((user) => user.verification === 'pending').length + this.adminVehicleCases.filter((item) => item.status === 'pending').length, tone: 'warn' },
+      { label: 'Wallet float', value: `INR ${users.reduce((sum, user) => sum + user.balance, 0).toLocaleString('en-IN')}`, tone: 'success' },
+    ];
+  }
+
+  get pendingIdVerifications() {
+    return [...this.adminOwners, ...this.adminPassengers].filter((user) => user.verification === 'pending');
+  }
+
+  get adminPendingVehicleCount() {
+    return this.adminVehicleCases.filter((item) => item.status === 'pending').length;
+  }
+
+  get adminWarningsCount() {
+    return [...this.adminOwners, ...this.adminPassengers].reduce((sum, user) => sum + user.warningCount, 0);
+  }
+
+  get adminPassengerTourCount() {
+    return this.adminTours.filter((tour) => tour.type === 'Passenger tour').length;
+  }
+
+  get adminVehicleTourCount() {
+    return this.adminTours.filter((tour) => tour.type === 'Vehicle tour').length;
+  }
+
+  get profileInitials() {
+    return this.profile.fullName
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join('')
+      .toUpperCase() || 'RS';
+  }
+
+  vehicleStatus(vehicle: Partial<ProfileVehicle>) {
+    return String(vehicle.status || 'pending');
+  }
+
+  isVehicleVerified(vehicle: Partial<ProfileVehicle>) {
+    return this.vehicleStatus(vehicle).toLowerCase() === 'verified';
+  }
+
+  vehicleDisplayStatus(vehicle: Partial<ProfileVehicle>) {
+    return this.normalizedVehicleStatus(vehicle);
+  }
+
+  loadProfile() {
+    if (!this.auth.isAuthenticated || this.auth.token === 'demo-token') {
+      return;
+    }
+
+    this.profileLoading = true;
+    this.http
+      .get<{
+        user: any;
+        vehicles: any[];
+        reviews: ProfileReview[];
+        stats: ProfileStats;
+      }>(`${this.apiUrl}/users/me`)
+      .subscribe({
+        next: ({ user, vehicles, reviews, stats }) => {
+          this.profileLoading = false;
+          this.profile = {
+            ...this.profile,
+            fullName: user.full_name || this.profile.fullName,
+            age: user.age || this.profile.age,
+            rating: Number(user.rating || this.profile.rating),
+            role: user.role || this.profile.role,
+            verificationStatus: user.verification_status || this.profile.verificationStatus,
+            phone: user.phone || this.profile.phone,
+            email: user.email || this.profile.email,
+            photoUrl: user.photo_url || this.profile.photoUrl,
+            bio: user.bio || this.profile.bio,
+            memberSince: user.created_at ? new Date(user.created_at).getFullYear().toString() : this.profile.memberSince,
+            govIdNumber: user.gov_id_number || this.profile.govIdNumber,
+            govIdFrontUrl: user.gov_id_front_url || this.profile.govIdFrontUrl,
+            govIdBackUrl: user.gov_id_back_url || this.profile.govIdBackUrl,
+            passengerVerificationStatus: user.passenger_verification_status || this.profile.passengerVerificationStatus,
+            stats: stats || this.profile.stats,
+            travelPreferences: {
+              ...this.profile.travelPreferences,
+              ...(user.travel_preferences || {}),
+            },
+            reviews: reviews?.length ? reviews : this.profile.reviews,
+          };
+          this.vehicles = vehicles?.length
+            ? vehicles.map((vehicle) => ({
+                make: vehicle.make,
+                model: vehicle.model,
+                color: vehicle.color || 'Not set',
+                vehicleId: vehicle.vehicle_id || vehicle.vehicleId,
+                plateNumber: vehicle.plate_number || vehicle.plateNumber,
+                seats: Number(vehicle.seats || 4),
+                status: vehicle.status || 'pending',
+                rcDocumentUrl: vehicle.rc_document_url || vehicle.rcDocumentUrl,
+                insuranceDocumentUrl: vehicle.insurance_document_url || vehicle.insuranceDocumentUrl,
+                frontPhotoUrl: vehicle.front_photo_url || vehicle.frontPhotoUrl,
+                backPhotoUrl: vehicle.back_photo_url || vehicle.backPhotoUrl,
+              }))
+            : this.vehicles;
+        },
+        error: () => {
+          this.profileLoading = false;
+        },
+      });
+  }
+
+  saveProfile() {
+    localStorage.setItem('rideshare.profilePhotoUrl', this.profile.photoUrl);
+    if (!this.auth.isAuthenticated || this.auth.token === 'demo-token') {
+      this.presentToast('Profile photo updated');
+      return;
+    }
+
+    this.profileSaving = true;
+    this.http
+      .patch(`${this.apiUrl}/users/me`, {
+        full_name: this.profile.fullName,
+        age: this.profile.age,
+        bio: this.profile.bio,
+        photo_url: this.profile.photoUrl,
+        gov_id_number: this.profile.govIdNumber,
+        gov_id_front_url: this.profile.govIdFrontUrl,
+        gov_id_back_url: this.profile.govIdBackUrl,
+        passenger_verification_status: this.profile.passengerVerificationStatus,
+        travel_preferences: this.profile.travelPreferences,
+      })
+      .subscribe({
+        next: () => {
+          this.profileSaving = false;
+          this.presentToast('Profile saved');
+          this.loadProfile();
+        },
+        error: (error) => {
+          this.profileSaving = false;
+          this.presentToast(error?.error?.error || 'Profile save failed');
+        },
+      });
+  }
+
+  updateProfilePhoto(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      this.profile.photoUrl = String(reader.result || this.profile.photoUrl);
+      localStorage.setItem('rideshare.profilePhotoUrl', this.profile.photoUrl);
+      this.saveProfile();
+    };
+    reader.readAsDataURL(file);
+  }
+
+  updateGovIdPhoto(event: Event, side: 'front' | 'back') {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      input.value = '';
+      this.presentToast('Only image files are allowed for Gov ID proof');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const imageUrl = String(reader.result || '');
+      if (side === 'front') {
+        this.profile.govIdFrontUrl = imageUrl;
+      } else {
+        this.profile.govIdBackUrl = imageUrl;
+      }
+      this.profile.passengerVerificationStatus = 'pending';
+      this.persistProfileVerification();
+    };
+    reader.readAsDataURL(file);
+  }
+
+  submitPassengerVerification() {
+    const idNumber = this.profile.govIdNumber.trim();
+    if (!idNumber || !this.profile.govIdFrontUrl || !this.profile.govIdBackUrl) {
+      this.presentToast('Upload Gov ID front, back photo, and ID number');
+      return;
+    }
+
+    this.profile.passengerVerificationStatus = 'verified';
+    this.persistProfileVerification();
+    this.notificationCenter = [
+      {
+        type: 'Passenger verification',
+        title: 'Passenger verified',
+        message: 'Your Gov ID proof is verified. You can now confirm seats.',
+        time: 'Now',
+        unread: true,
+        icon: 'shield-checkmark-outline',
+      },
+      ...this.notificationCenter,
+    ];
+    this.unreadCount += 1;
+    this.saveRealtimeState();
+    this.saveProfile();
+    this.presentToast('Passenger verification completed');
+  }
+
+  private persistProfileVerification() {
+    localStorage.setItem(
+      'rideshare.passengerVerification',
+      JSON.stringify({
+        govIdNumber: this.profile.govIdNumber,
+        govIdFrontUrl: this.profile.govIdFrontUrl,
+        govIdBackUrl: this.profile.govIdBackUrl,
+        passengerVerificationStatus: this.profile.passengerVerificationStatus,
+      }),
+    );
+  }
+
+  get currentUserAvatar(): string {
+    return this.profile.photoUrl || this.avatarForName(this.profile.fullName);
+  }
+
+  avatarForName(name: string): string {
+    if (name === this.profile.fullName && this.profile.photoUrl) {
+      return this.currentUserAvatar;
+    }
+
+    const initials = String(name || 'User')
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.charAt(0).toUpperCase())
+      .join('') || 'U';
+    const colors = ['#001F3F', '#123E68', '#0F766E', '#5B5F97', '#334155'];
+    const color = colors[Math.abs(this.hashText(name)) % colors.length];
+    return `data:image/svg+xml,${encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80"><circle cx="40" cy="40" r="40" fill="${color}"/><text x="40" y="48" text-anchor="middle" font-family="Arial" font-size="26" font-weight="700" fill="white">${initials}</text></svg>`,
+    )}`;
+  }
+
+  chatAvatar(sender: 'driver' | 'me'): string {
+    return sender === 'me' ? this.currentUserAvatar : this.selectedRide.photo;
+  }
+
+  get driverPublicProfile() {
+    const isCurrentProfile = this.selectedRide.driver === this.profile.fullName;
+    const joinedYear = isCurrentProfile ? Number(this.profile.memberSince) || 2026 : this.driverJoinedYear(this.selectedRide.driver);
+    const yearsOnRide = Math.max(1, new Date().getFullYear() - joinedYear + 1);
+    const preferences = this.profile.travelPreferences;
+
+    return {
+      name: this.selectedRide.driver,
+      photo: this.selectedRide.photo,
+      rating: this.selectedRide.rating,
+      trips: this.selectedRide.trips,
+      bio: isCurrentProfile
+        ? this.profile.bio
+        : `${this.selectedRide.driver} is a verified ride owner with punctual pickup, clean car standards, and safe intercity driving.`,
+      phone: isCurrentProfile ? this.profile.phone : '+91 98xx xxx xxx',
+      email: isCurrentProfile ? this.profile.email : 'Contact through chat',
+      verification: this.selectedRide.verified ? 'ID and phone verified' : 'Verification pending',
+      vehicle: this.selectedRide.vehicle,
+      vehicleMeta: this.selectedRide.vehicleMeta,
+      joinedYear,
+      yearsOnRide: `${yearsOnRide} ${yearsOnRide === 1 ? 'year' : 'years'} on rides`,
+      moods: [preferences.music, preferences.chat, preferences.smoking, preferences.pets],
+    };
+  }
+
+  get confirmedPassengerProfiles(): PassengerPublicProfile[] {
+    return this.selectedRide.passengers.map((passenger) => this.passengerPublicProfile(passenger));
+  }
+
+  passengerPublicProfile(name: string): PassengerPublicProfile {
+    const hash = Math.abs(this.hashText(name));
+    const pickups = [
+      this.selectedRide.pickup,
+      'Near main gate',
+      'Metro station pickup',
+      'Office pickup point',
+      'High street junction',
+    ];
+    const moodSets = [
+      ['Quiet ride', 'Light luggage'],
+      ['Friendly chat', 'Music okay'],
+      ['Work commute', 'On time'],
+      ['Verified rider', 'Window seat'],
+      ['Minimal calls', 'Easy pickup'],
+    ];
+
+    return {
+      name,
+      photo: this.avatarForName(name),
+      pickup: name === this.profile.fullName ? this.selectedRide.pickup : pickups[hash % pickups.length],
+      rating: (4.5 + (hash % 5) / 10).toFixed(1),
+      moods: moodSets[hash % moodSets.length],
+      verified: true,
+    };
+  }
+
+  private driverJoinedYear(driver: string): number {
+    const joinedYears: Record<string, number> = {
+      'Aarav Mehta': 2023,
+      'Nisha Rao': 2022,
+      'Kabir Singh': 2024,
+    };
+
+    return joinedYears[driver] || 2024;
+  }
+
+  private hashText(value: string): number {
+    return String(value || '')
+      .split('')
+      .reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) | 0, 0);
+  }
+
+  onLoginPhoneInput(value: string) {
+    this.loginForm.phone = String(value || '').replace(/\D/g, '').slice(0, 10);
+    this.otpSent = false;
+    this.loginForm.otp = '';
+  }
+
+  private isLoginPhoneValid() {
+    return /^\d{10}$/.test(this.loginForm.phone);
+  }
+
+  private getApiErrorMessage(error: any, fallback: string) {
+    if (error?.status === 0) {
+      return `Cannot reach API ${this.apiUrl}. Check mobile internet and reinstall the latest APK.`;
+    }
+
+    return error?.error?.error || error?.error?.message || error?.message || fallback;
+  }
+
+  sendLoginOtp() {
+    if (!this.isLoginPhoneValid()) {
+      this.presentToast('Enter 10 digit numeric mobile number');
+      return;
+    }
+
+    this.otpSending = true;
+    this.liveActivity = 'Sending WhatsApp OTP...';
+    this.auth.sendOtp(this.loginForm.phone).subscribe({
+      next: (response) => {
+        this.otpSent = true;
+        this.otpSending = false;
+        if (response.demoOtp) {
+          this.liveActivity = `Test OTP sent: ${response.demoOtp}`;
+          this.presentToast(`Test OTP sent: ${response.demoOtp}`);
+          return;
+        }
+
+        this.liveActivity = 'WhatsApp OTP sent. Check your phone.';
+        this.presentToast('WhatsApp OTP sent');
+      },
+      error: (error) => {
+        this.otpSending = false;
+        this.liveActivity = this.getApiErrorMessage(error, 'WhatsApp OTP failed');
+        this.presentToast(this.liveActivity);
+      },
+    });
+  }
+
+  login() {
+    if (!this.isLoginPhoneValid()) {
+      this.presentToast('Enter 10 digit numeric mobile number');
+      return;
+    }
+
+    if (this.loginForm.otp.length < 4) {
+      this.presentToast('Enter OTP received on WhatsApp');
+      return;
+    }
+
+    this.loginSubmitting = true;
+    this.liveActivity = 'Verifying OTP...';
+    this.auth.login(this.loginForm.phone, this.loginForm.otp, this.loginForm.role, this.loginForm.fullName).subscribe({
+      next: () => {
+        this.loginSubmitting = false;
+        this.isLoggedIn = true;
+        this.liveActivity = 'WhatsApp OTP verified · realtime session started';
+        this.realtime.connect();
+        this.presentToast(this.authMode === 'signup' ? 'Signup successful' : 'Login successful');
+        this.goTo('/search');
+      },
+      error: (error) => {
+        this.loginSubmitting = false;
+        this.liveActivity = this.getApiErrorMessage(error, 'OTP verification failed');
+        this.presentToast(this.liveActivity);
+      },
+    });
+  }
+
+  logout() {
+    this.isLoggedIn = false;
+    this.realtime.disconnect();
+    this.presentToast('Logged out');
+    this.auth.logout();
+  }
+
+  goBackToSearch() {
+    this.goTo('/search');
+  }
+
+  toggleFilter(filter: { key: string; label: string; active: boolean }) {
+    filter.active = !filter.active;
+  }
+
+  toggleFilterDropdown() {
+    this.filterDropdownOpen = !this.filterDropdownOpen;
+  }
+
+  viewRide(ride: RideSearchResult) {
+    this.rideDetailsBackRoute = '/results';
+    this.selectedRideMode = 'active';
+    this.selectedRide = {
+      ...ride,
+      trips: ride.driver === 'Aarav Mehta' ? 128 : ride.driver === 'Nisha Rao' ? 96 : 74,
+    };
+    this.mapEmbedUrl = this.buildRouteMapUrl(ride.pickup, ride.drop);
+    this.presentToast(`Opening ${ride.driver}'s ride`);
+    this.goTo('/ride-details');
+  }
+
+  viewManagedRide(ride: (typeof this.managedRides)[number]) {
+    const matchedRide =
+      this.resultRides.find((result) => result.driver === ride.driver) ||
+      this.resultRides.find((result) => {
+        const [from, to] = ride.route.split(' to ').map((part) => part.toLowerCase());
+        return result.route.toLowerCase().includes(from || '') || result.route.toLowerCase().includes(to || '');
+      });
+
+    const detailRide = matchedRide || this.selectedRide;
+    const confirmedPassengers = detailRide.passengers.length
+      ? detailRide.passengers
+      : [this.profile.fullName, 'Riya Sharma'];
+
+    this.rideDetailsBackRoute = '/your-rides';
+    this.selectedRideMode = ride.tab === 'Past' ? 'past' : 'active';
+    this.selectedRide = {
+      ...detailRide,
+      driver: ride.driver,
+      owner: ride.driver,
+      photo: ride.image,
+      route: matchedRide?.route || ride.route,
+      price: ride.price,
+      priceValue: Number(String(ride.price).replace(/\D/g, '')) || detailRide.priceValue,
+      status: detailRide.status,
+      passengers: confirmedPassengers,
+      bookedSeats: Math.max(detailRide.bookedSeats, confirmedPassengers.length),
+      seats: Math.max(0, detailRide.totalSeats - Math.max(detailRide.bookedSeats, confirmedPassengers.length)),
+      trips: ride.driver === 'Aarav Mehta' ? 128 : ride.driver === 'Nisha Rao' ? 96 : 74,
+    };
+    this.mapEmbedUrl = this.buildRouteMapUrl(this.selectedRide.pickup, this.selectedRide.drop);
+    this.presentToast(`Opening ${ride.driver}'s ride details`);
+    this.goTo('/ride-details');
+  }
+
+  bookSeat(ride: RideSearchResult) {
+    if (!this.isPassengerVerified) {
+      this.presentToast('Complete passenger Gov ID verification before booking');
+      this.goTo('/profile');
+      return;
+    }
+
+    if (ride.seats < 1) {
+      this.viewRide(ride);
+      this.presentToast('This ride is full booked. You can view details only.');
+      return;
+    }
+
+    this.api.bookRide({ rideId: 1, seats: 1 }).subscribe({
+      next: () => {
+        this.viewRide(ride);
+        this.addCurrentPassengerToSelectedRide();
+        this.sendBookingReceivedNotification(ride);
+        this.presentToast(`Seat request sent to ${ride.driver}`);
+      },
+      error: (error) => {
+        this.viewRide(ride);
+        this.addCurrentPassengerToSelectedRide();
+        this.sendBookingReceivedNotification(ride);
+        this.presentToast(error.error?.error || `Seat request sent to ${ride.driver}`);
+      },
+    });
+  }
+
+  messageDriver() {
+    this.presentToast(`Opening chat with ${this.selectedRide.driver}`);
+    this.goTo('/chat');
+  }
+
+  attachChatFile(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    this.attachedFileName = file.name;
+    this.attachedFileType = file.type.startsWith('image/') ? 'image' : 'file';
+    this.attachedPreviewUrl = '';
+
+    if (this.attachedFileType === 'image') {
+      const reader = new FileReader();
+      reader.onload = () => {
+        this.attachedPreviewUrl = String(reader.result || '');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    this.presentToast(`${file.name} attached`);
+  }
+
+  clearChatAttachment() {
+    this.attachedFileName = '';
+    this.attachedPreviewUrl = '';
+    this.attachedFileType = 'file';
+  }
+
+  sendChatMessage() {
+    const text = this.chatDraft.trim();
+    if (!text && !this.attachedFileName) {
+      this.presentToast('Type a message or attach a file');
+      return;
+    }
+
+    const messageText = text || `Shared file: ${this.attachedFileName}`;
+    const sentMessage = {
+      id: Date.now(),
+      from: 'me' as const,
+      text: messageText,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      attachment: this.attachedFileName || undefined,
+      attachmentType: this.attachedFileName ? this.attachedFileType : undefined,
+      previewUrl: this.attachedPreviewUrl || undefined,
+    };
+
+    this.chats = [...this.chats, sentMessage];
+    this.chatDraft = '';
+    this.clearChatAttachment();
+    this.liveActivity = 'Message sent · realtime sync pending';
+
+    this.api
+      .sendMessage({
+        rideId: 1,
+        receiverId: 2,
+        message: sentMessage.text,
+        attachmentUrl: sentMessage.attachment ? `local://${sentMessage.attachment}` : undefined,
+      })
+      .subscribe({
+        next: () => {
+          this.liveActivity = 'Message delivered · realtime event sent';
+        },
+        error: () => {
+          this.liveActivity = 'Message saved locally · backend not connected';
+        },
+      });
+  }
+
+  deleteChatMessage(messageId: number) {
+    this.chats = this.chats.filter((chat) => chat.id !== messageId);
+    this.presentToast('Message deleted');
+  }
+
+  bookRide() {
+    this.presentToast('Ride booking started');
+  }
+
+  confirmBooking() {
+    if (!this.isPassengerVerified) {
+      this.presentToast('Passenger Gov ID verification is required before confirming ride');
+      this.goTo('/profile');
+      return;
+    }
+
+    if (this.selectedRide.seats < 1) {
+      this.presentToast('This ride is full booked');
+      return;
+    }
+
+    this.addCurrentPassengerToSelectedRide();
+    this.sendBookingReceivedNotification(this.selectedRide);
+    this.presentToast('Booking confirmed');
+  }
+
+  private sendBookingReceivedNotification(ride: RideSearchResult) {
+    const details = this.buildBookingRequestDetails(ride);
+    this.notificationCenter = [
+      {
+        type: 'Booking received',
+        title: 'Booking received',
+        message: `${details.passengerName} requested ${details.from} to ${details.to}.`,
+        time: 'Now',
+        unread: true,
+        icon: 'person-circle-outline',
+        bookingDetails: details,
+      },
+      ...this.notificationCenter,
+    ];
+    this.unreadCount += 1;
+    this.liveActivity = `Booking received for ${details.route}`;
+    this.saveRealtimeState();
+  }
+
+  private buildBookingRequestDetails(ride: RideSearchResult): BookingRequestDetails {
+    return {
+      passengerName: this.profile.fullName || 'Passenger',
+      passengerPhoto: this.currentUserAvatar,
+      passengerPhone: this.profile.phone,
+      passengerGovIdNumber: this.profile.govIdNumber || 'Verified ID',
+      verified: this.isPassengerVerified,
+      from: ride.pickup,
+      to: ride.drop,
+      route: ride.route,
+      vehicle: ride.vehicle,
+      pickup: ride.pickup,
+      drop: ride.drop,
+    };
+  }
+
+  openNotification(item: NotificationCenterItem) {
+    item.unread = false;
+    this.unreadCount = Math.max(0, this.unreadCount - 1);
+    if (item.bookingDetails) {
+      this.selectedBookingRequest = item.bookingDetails;
+    }
+    if (item.action === 'same_route') {
+      this.viewSameRouteRidesFromNotification();
+    }
+    this.saveRealtimeState();
+  }
+
+  viewSameRouteRidesFromNotification() {
+    this.activeRideTab = 'Upcoming';
+    this.search.from = 'Bengaluru Central';
+    this.search.to = 'Mysuru Palace Road';
+    this.resultRides = this.buildNearbyRideResults();
+    this.presentToast('Showing available rides on the same route');
+    this.goTo('/results');
+  }
+
+  closeBookingRequestPopup() {
+    this.selectedBookingRequest = null;
+  }
+
+  openOwnerProfile() {
+    this.ownerProfileOpen = true;
+  }
+
+  closeOwnerProfile() {
+    this.ownerProfileOpen = false;
+  }
+
+  openPassengerProfile(passenger: PassengerPublicProfile) {
+    this.selectedPassengerProfile = passenger;
+  }
+
+  closePassengerProfile() {
+    this.selectedPassengerProfile = null;
+  }
+
+  setPastRideRating(star: number) {
+    this.pastRideRating = star;
+  }
+
+  submitPastRideRating() {
+    if (!this.pastRideRating) {
+      this.presentToast('Select a star rating first');
+      return;
+    }
+
+    this.recordAdminLog('Ride', 'Owner rating submitted', this.profile.fullName, this.selectedRide.driver, 'active');
+    this.presentToast('Rating submitted');
+  }
+
+  private addCurrentPassengerToSelectedRide() {
+    const passengerName = this.profile.fullName || 'You';
+    const passengerExists = this.selectedRide.passengers.includes(passengerName);
+    this.selectedRide = {
+      ...this.selectedRide,
+      seats: Math.max(0, this.selectedRide.seats - (passengerExists ? 0 : 1)),
+      bookedSeats: Math.min(this.selectedRide.totalSeats, this.selectedRide.bookedSeats + (passengerExists ? 0 : 1)),
+      passengers: passengerExists ? this.selectedRide.passengers : [...this.selectedRide.passengers, passengerName],
+    };
+  }
+
+  addStop() {
+    this.stops = [...this.stops, 'New stop'];
+    this.presentToast('Stop added');
+  }
+
+  continuePublish() {
+    if (!this.canPublishRide) {
+      this.presentToast('Complete owner profile and vehicle verification before publishing');
+      this.goTo(this.hasVerifiedPublishVehicle ? '/profile' : '/vehicles');
+      return;
+    }
+
+    const nextStep = Math.min(4, this.publishFlowStepFromRoute + 1);
+    const routes = {
+      3: '/publish/preferences',
+      4: '/publish/confirm',
+    };
+
+    this.goTo(routes[nextStep as 3 | 4] || '/publish');
+    this.presentToast(nextStep === 4 ? 'Review your ride' : 'Preferences saved');
+  }
+
+  previousPublishStep() {
+    if (this.publishFlowStepFromRoute === 4) {
+      this.goTo('/publish/preferences');
+      return;
+    }
+
+    if (this.publishFlowStepFromRoute === 3) {
+      this.goTo('/publish');
+      return;
+    }
+
+    this.goTo('/search');
+  }
+
+  increaseSeats() {
+    this.rideSetup.seats = Math.min(8, this.rideSetup.seats + 1);
+  }
+
+  decreaseSeats() {
+    this.rideSetup.seats = Math.max(1, this.rideSetup.seats - 1);
+  }
+
+  selectMusic(option: string) {
+    this.travelPreferences.music = option;
+  }
+
+  selectChat(option: string) {
+    this.travelPreferences.chat = option;
+  }
+
+  publishRideNow() {
+    const verifiedVehicle = this.vehicles.find((vehicle) => vehicle.vehicleId && this.isVehicleVerified(vehicle));
+    if (!this.canPublishRide || !verifiedVehicle?.vehicleId) {
+      this.presentToast('Verification must be complete before your ride can go public');
+      this.goTo(this.hasVerifiedPublishVehicle ? '/profile' : '/vehicles');
+      return;
+    }
+
+    this.api
+      .publishRide({
+        vehicleId: verifiedVehicle.vehicleId,
+        origin: this.publishRideForm.departure,
+        destination: this.publishRideForm.destination,
+        departureAt: new Date(Date.now() + 86400000).toISOString(),
+        pricePerSeat: this.rideSetup.pricePerSeat,
+        totalSeats: this.rideSetup.seats,
+        instantBooking: this.rideSetup.instantBooking,
+        stops: this.stops,
+      })
+      .subscribe({
+        next: () => {
+          this.showPublishSuccess = true;
+        },
+        error: () => {
+          this.showPublishSuccess = true;
+        },
+      });
+  }
+
+  closePublishSuccess() {
+    this.showPublishSuccess = false;
+  }
+
+  selectTab(tab: 'search' | 'publish' | 'yourRides' | 'inbox' | 'profile') {
+    if (tab === 'publish' && !this.canPublishRide) {
+      this.presentToast('Only verified owners with a verified vehicle can publish rides');
+      this.goTo(this.hasVerifiedPublishVehicle ? '/profile' : '/vehicles');
+      return;
+    }
+
+    const routes = {
+      search: '/search',
+      publish: '/publish',
+      yourRides: '/your-rides',
+      inbox: '/inbox',
+      profile: '/profile',
+    };
+
+    this.goTo(routes[tab]);
+  }
+
+  get filteredManagedRides() {
+    return this.managedRides.filter((ride) => ride.tab === this.activeRideTab);
+  }
+
+  get currentRideIsPast() {
+    return this.selectedRideMode === 'past';
+  }
+
+  get unreadMessageCount() {
+    return this.conversations.reduce((total, conversation) => total + conversation.unread, 0);
+  }
+
+  get filteredAdminLogs() {
+    const query = this.adminLogSearch.trim().toLowerCase();
+    return this.adminLogs
+      .filter((log) => this.adminLogType === 'All' || log.type === this.adminLogType)
+      .filter((log) => {
+        const searchable = `${log.action} ${log.actor} ${log.target} ${log.type} ${log.createdAt}`.toLowerCase();
+        return !query || searchable.includes(query);
+      })
+      .sort((first, second) => second.id - first.id);
+  }
+
+  get pagedAdminLogs() {
+    const start = (this.adminLogPage - 1) * this.adminLogPageSize;
+    return this.filteredAdminLogs.slice(start, start + this.adminLogPageSize);
+  }
+
+  get adminLogTotalPages() {
+    return Math.max(1, Math.ceil(this.filteredAdminLogs.length / this.adminLogPageSize));
+  }
+
+  get activeAdminAds() {
+    return this.adminAds.filter((ad) => ad.status === 'active');
+  }
+
+  get expiredAdminAds() {
+    return this.adminAds.filter((ad) => ad.status === 'expired');
+  }
+
+  get adminAdRevenue() {
+    return this.adInvoices.reduce((total, invoice) => total + invoice.finalAmount, 0);
+  }
+
+  get monthlyAdRevenue() {
+    return this.adInvoices
+      .filter((invoice) => invoice.paymentStatus === 'Paid')
+      .reduce((total, invoice) => total + invoice.finalAmount, 0);
+  }
+
+  get adminOwnerBalance() {
+    return this.adminOwners.reduce((total, owner) => total + owner.balance, 0);
+  }
+
+  get adminPassengerBalance() {
+    return this.adminPassengers.reduce((total, passenger) => total + passenger.balance, 0);
+  }
+
+  get adminWalletFloat() {
+    return this.adminOwnerBalance + this.adminPassengerBalance;
+  }
+
+  get adminWalletAddedTotal() {
+    return this.adminWalletTransactions.reduce((total, transaction) => total + Math.max(0, transaction.amount), 0);
+  }
+
+  get adminMoneyTabLabel() {
+    return this.adminMoneyTabs.find((tab) => tab.key === this.adminMoneyTab)?.label || 'Admin';
+  }
+
+  get adminWalletVisibleTransactions() {
+    const roleByTab: Record<AdminMoneyTab, string> = {
+      admin: 'Admin',
+      owners: 'Owner',
+      passengers: 'Passenger',
+    };
+    return this.adminWalletTransactions
+      .filter((transaction) => transaction.role === roleByTab[this.adminMoneyTab])
+      .sort((first, second) => second.id - first.id);
+  }
+
+  get pagedAdminWalletTransactions() {
+    const start = (this.adminMoneyPage - 1) * this.adminMoneyPageSize;
+    return this.adminWalletVisibleTransactions.slice(start, start + this.adminMoneyPageSize);
+  }
+
+  get adminMoneyTotalPages() {
+    return Math.max(1, Math.ceil(this.adminWalletVisibleTransactions.length / this.adminMoneyPageSize));
+  }
+
+  get adminVisibleWalletTotal() {
+    return this.adminWalletVisibleTransactions.reduce((total, transaction) => total + transaction.amount, 0);
+  }
+
+  get adminVisibleWalletCredits() {
+    return this.adminWalletVisibleTransactions.reduce((total, transaction) => total + Math.max(0, transaction.amount), 0);
+  }
+
+  get adminVisibleWalletDebits() {
+    return this.adminWalletVisibleTransactions.reduce((total, transaction) => total + Math.abs(Math.min(0, transaction.amount)), 0);
+  }
+
+  get selectedAdminUserDocuments() {
+    if (!this.selectedAdminUser) return [];
+    const baseDocuments = this.selectedAdminUser.documents || [];
+    if (this.selectedAdminUser.role !== 'owner') return baseDocuments;
+
+    const vehicleDocuments = this.adminVehicleCases
+      .filter((vehicle) => vehicle.ownerId === this.selectedAdminUser?.id)
+      .reduce<AdminDocument[]>((documents, vehicle) => {
+        const vehicleDocs = vehicle.documentItems?.length
+          ? vehicle.documentItems.map((document) => ({
+              ...document,
+              label: `${vehicle.vehicle} ${document.label}`,
+              status: vehicle.status === 'verified' ? 'verified' as const : document.status,
+            }))
+          : [
+              { label: `${vehicle.vehicle} RC book`, value: vehicle.plate, status: vehicle.status },
+              { label: `${vehicle.vehicle} front photo`, value: vehicle.documents, status: vehicle.status },
+              { label: `${vehicle.vehicle} back photo`, value: vehicle.documents, status: vehicle.status },
+            ];
+        documents.push(...vehicleDocs);
+        return documents;
+      }, []);
+    return [...baseDocuments, ...vehicleDocuments];
+  }
+
+  get selectedAdminVehicleDocuments() {
+    return this.selectedAdminVehicle?.documentItems || [];
+  }
+
+  get selectedAdminUserTransactions() {
+    if (!this.selectedAdminUser) return [];
+    return [...this.adminWalletTransactions, ...this.adminTransactions].filter(
+      (transaction) => transaction.user === this.selectedAdminUser?.name,
+    );
+  }
+
+  get activeAdPartners() {
+    return this.adPartners.filter((partner) => partner.status === 'active');
+  }
+
+  get highPriorityPartners() {
+    return this.adPartners.filter((partner) => partner.priority === 'High');
+  }
+
+  get pendingBillingAmount() {
+    return this.adInvoices
+      .filter((invoice) => invoice.paymentStatus === 'Pending' || invoice.paymentStatus === 'Partial Payment')
+      .reduce((total, invoice) => total + invoice.finalAmount, 0);
+  }
+
+  get paidBillingAmount() {
+    return this.adInvoices
+      .filter((invoice) => invoice.paymentStatus === 'Paid')
+      .reduce((total, invoice) => total + invoice.finalAmount, 0);
+  }
+
+  get totalBillingGst() {
+    return this.adInvoices.reduce((total, invoice) => total + invoice.gst, 0);
+  }
+
+  openVehicleAdd() {
+    if (this.vehicles.length >= 2) {
+      this.showVehicleLimitAlert();
+      return;
+    }
+
+    this.resetVehicleForm();
+    this.goTo('/vehicles');
+  }
+
+  vehicleKey(vehicle: Partial<ProfileVehicle>) {
+    return String(vehicle.vehicleId || vehicle.plateNumber || `${vehicle.make}-${vehicle.model}`);
+  }
+
+  get isEditingVehicle() {
+    return Boolean(this.editingVehicleKey);
+  }
+
+  get vehicleMakeOptions() {
+    return this.vehicleCatalog.map((item) => item.make);
+  }
+
+  get vehicleModelOptions() {
+    return this.vehicleCatalog.find((item) => item.make === this.vehicleForm.make)?.models || [];
+  }
+
+  get filteredVehicleMakeOptions() {
+    const query = this.vehicleForm.make.trim().toLowerCase();
+    return this.vehicleMakeOptions.filter((make) => make.toLowerCase().includes(query)).slice(0, 8);
+  }
+
+  get filteredVehicleModelOptions() {
+    const query = this.vehicleForm.model.trim().toLowerCase();
+    return this.vehicleModelOptions.filter((model) => model.name.toLowerCase().includes(query)).slice(0, 8);
+  }
+
+  openVehicleLookup(type: 'make' | 'model') {
+    this.activeVehicleLookup = type;
+  }
+
+  closeVehicleLookup() {
+    window.setTimeout(() => {
+      this.activeVehicleLookup = null;
+    }, 120);
+  }
+
+  onVehicleMakeChange(value: string) {
+    this.vehicleForm.make = value;
+    this.activeVehicleLookup = 'make';
+    const selectedMake = this.vehicleCatalog.find((item) => item.make === value);
+    const modelExists = selectedMake?.models.some((model) => model.name === this.vehicleForm.model);
+
+    if (!modelExists) {
+      this.vehicleForm.model = '';
+      this.vehicleForm.seats = 4;
+    }
+  }
+
+  onVehicleModelChange(value: string) {
+    this.vehicleForm.model = value;
+    this.activeVehicleLookup = 'model';
+    const selectedModel = this.vehicleModelOptions.find((model) => model.name === value);
+
+    if (selectedModel) {
+      this.vehicleForm.seats = selectedModel.seats;
+    }
+  }
+
+  selectVehicleMake(make: string) {
+    this.onVehicleMakeChange(make);
+    this.activeVehicleLookup = null;
+  }
+
+  selectVehicleModel(model: { name: string; seats: number }) {
+    this.vehicleForm.model = model.name;
+    this.vehicleForm.seats = model.seats;
+    this.activeVehicleLookup = null;
+  }
+
+  toggleVehicleMenu(vehicle: Partial<ProfileVehicle>) {
+    const key = this.vehicleKey(vehicle);
+    this.activeVehicleMenuId = this.activeVehicleMenuId === key ? null : key;
+  }
+
+  backFromVehicleForm() {
+    this.resetVehicleForm();
+    this.goTo('/profile');
+  }
+
+  private showVehicleLimitAlert() {
+    window.alert(
+      'Maximum 2 vehicles. Admin verifies vehicle and documents before ride publishing. If you want to add a new vehicle, delete one existing vehicle first. Verification can take 3-4 hours.',
+    );
+  }
+
+  addVehicle() {
+    const isEdit = this.isEditingVehicle;
+    if (!isEdit && this.vehicles.length >= 2) {
+      this.showVehicleLimitAlert();
+      return;
+    }
+
+    if (
+      !this.vehicleForm.make.trim() ||
+      !this.vehicleForm.model.trim() ||
+      !this.vehicleForm.plateNumber ||
+      !Number(this.vehicleForm.seats) ||
+      !this.vehicleForm.rcDocumentUrl ||
+      !this.vehicleForm.frontPhotoUrl ||
+      !this.vehicleForm.backPhotoUrl
+    ) {
+      this.presentToast('Make, model, seats, plate number, RC book, and vehicle photos are mandatory');
+      return;
+    }
+
+    const payload = {
+      make: this.vehicleForm.make.trim(),
+      model: this.vehicleForm.model.trim(),
+      color: this.vehicleForm.color,
+      plateNumber: this.vehicleForm.plateNumber.trim(),
+      seats: Math.max(1, Math.min(12, Number(this.vehicleForm.seats))),
+      rcDocumentUrl: this.vehicleForm.rcDocumentUrl,
+      insuranceDocumentUrl: this.vehicleForm.insuranceDocumentUrl,
+      frontPhotoUrl: this.vehicleForm.frontPhotoUrl,
+      backPhotoUrl: this.vehicleForm.backPhotoUrl,
+    };
+
+    if (isEdit && !this.vehicleForm.vehicleId) {
+      const vehicle = {
+        make: this.vehicleForm.make,
+        model: this.vehicleForm.model,
+        color: this.vehicleForm.color,
+        plateNumber: this.vehicleForm.plateNumber,
+        seats: this.vehicleForm.seats,
+        status: 'pending',
+        rcDocumentUrl: this.vehicleForm.rcDocumentUrl,
+        insuranceDocumentUrl: this.vehicleForm.insuranceDocumentUrl,
+        frontPhotoUrl: this.vehicleForm.frontPhotoUrl,
+        backPhotoUrl: this.vehicleForm.backPhotoUrl,
+      };
+      this.vehicles = this.vehicles.map((item) => (this.vehicleKey(item) === this.editingVehicleKey ? vehicle : item));
+      this.saveRealtimeState();
+      this.resetVehicleForm();
+      this.presentToast('Vehicle updated successfully');
+      return;
+    }
+
+    const request$ = isEdit
+      ? this.api.updateVehicle(this.vehicleForm.vehicleId as number, payload)
+      : this.api.addVehicle(payload);
+
+    this.vehicleSaving = true;
+    request$.subscribe({
+      next: (response: any) => {
+        const saved = response.vehicle || {};
+        const vehicle = {
+          vehicleId: saved.vehicle_id || this.vehicleForm.vehicleId || Date.now(),
+          make: saved.make || this.vehicleForm.make,
+          model: saved.model || this.vehicleForm.model,
+          color: saved.color || this.vehicleForm.color,
+          plateNumber: saved.plate_number || this.vehicleForm.plateNumber,
+          seats: saved.seats || this.vehicleForm.seats,
+          status: saved.status || 'pending',
+          rcDocumentUrl: saved.rc_document_url || this.vehicleForm.rcDocumentUrl,
+          insuranceDocumentUrl: saved.insurance_document_url || this.vehicleForm.insuranceDocumentUrl,
+          frontPhotoUrl: saved.front_photo_url || this.vehicleForm.frontPhotoUrl,
+          backPhotoUrl: saved.back_photo_url || this.vehicleForm.backPhotoUrl,
+        };
+        this.vehicles = isEdit
+          ? this.vehicles.map((item) => (item.vehicleId === vehicle.vehicleId ? vehicle : item))
+          : [vehicle, ...this.vehicles];
+        this.vehicleSaving = false;
+        this.liveActivity = 'Backend vehicle event received · realtime notification pushed';
+        this.saveRealtimeState();
+        this.resetVehicleForm();
+        this.loadProfile();
+      },
+      error: (error) => {
+        this.vehicleSaving = false;
+        this.presentToast(error?.error?.error || 'Vehicle save failed');
+      },
+    });
+    this.notificationCenter = [
+      {
+        type: 'Vehicle added',
+        title: isEdit ? 'Vehicle updated for verification' : 'Vehicle submitted for verification',
+        message: `${this.vehicleForm.make} ${this.vehicleForm.model} is now in review.`,
+        time: 'Now',
+        unread: true,
+        icon: 'car-outline',
+      },
+      ...this.notificationCenter,
+    ];
+    this.unreadCount += 1;
+    this.liveActivity = isEdit ? 'Vehicle updated · notification pushed in realtime' : 'Vehicle created · notification pushed in realtime';
+    this.saveRealtimeState();
+    this.presentToast(isEdit ? 'Vehicle updated successfully' : 'Vehicle added successfully');
+  }
+
+  editVehicle(vehicle: ProfileVehicle) {
+    this.activeVehicleMenuId = null;
+    this.editingVehicleKey = this.vehicleKey(vehicle);
+    this.vehicleForm = {
+      vehicleId: vehicle.vehicleId || null,
+      make: vehicle.make,
+      model: vehicle.model,
+      color: vehicle.color,
+      plateNumber: vehicle.plateNumber,
+      seats: vehicle.seats,
+      rcDocumentUrl: vehicle.rcDocumentUrl || '',
+      insuranceDocumentUrl: vehicle.insuranceDocumentUrl || '',
+      frontPhotoUrl: vehicle.frontPhotoUrl || '',
+      backPhotoUrl: vehicle.backPhotoUrl || '',
+      status: vehicle.status || 'pending',
+    };
+    this.goTo('/vehicles');
+  }
+
+  deleteVehicle(vehicle: ProfileVehicle) {
+    this.activeVehicleMenuId = null;
+    if (!window.confirm(`Delete ${vehicle.make} ${vehicle.model}?`)) return;
+
+    const previousVehicles = [...this.vehicles];
+    this.vehicles = this.vehicles.filter((item) => item !== vehicle && item.vehicleId !== vehicle.vehicleId);
+    this.saveRealtimeState();
+
+    if (!vehicle.vehicleId) {
+      this.presentToast('Vehicle deleted');
+      return;
+    }
+
+    this.api.deleteVehicle(vehicle.vehicleId).subscribe({
+      next: () => {
+        this.loadProfile();
+        this.presentToast('Vehicle deleted');
+      },
+      error: (error) => {
+        if (this.auth.isAuthenticated && this.auth.token !== 'demo-token') {
+          this.vehicles = previousVehicles;
+          this.saveRealtimeState();
+          this.presentToast(error?.error?.error || 'Vehicle delete failed');
+          return;
+        }
+
+        this.presentToast('Vehicle deleted locally');
+      },
+    });
+  }
+
+  resetVehicleForm() {
+    this.editingVehicleKey = null;
+    this.vehicleForm = {
+      vehicleId: null,
+      make: '',
+      model: '',
+      color: '',
+      plateNumber: '',
+      seats: 4,
+      rcDocumentUrl: '',
+      insuranceDocumentUrl: '',
+      frontPhotoUrl: '',
+      backPhotoUrl: '',
+      status: 'pending',
+    };
+  }
+
+  updateVehicleDocument(event: Event, field: 'rcDocumentUrl' | 'insuranceDocumentUrl' | 'frontPhotoUrl' | 'backPhotoUrl') {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      input.value = '';
+      this.presentToast('Only image files are allowed');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      this.vehicleForm[field] = String(reader.result || file.name);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  vehiclePreviewUrl(value: string, label: string) {
+    if (value.startsWith('data:image/')) {
+      return value;
+    }
+
+    return `data:image/svg+xml,${encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="180" height="120" viewBox="0 0 180 120"><rect width="180" height="120" rx="18" fill="#eef3f8"/><text x="90" y="56" text-anchor="middle" font-family="Arial" font-size="14" font-weight="700" fill="#001F3F">${label}</text><text x="90" y="78" text-anchor="middle" font-family="Arial" font-size="11" fill="#64748b">Current image</text></svg>`,
+    )}`;
+  }
+
+  vehicleStatusClass(vehicle: Partial<ProfileVehicle>) {
+    const status = this.normalizedVehicleStatus(vehicle).toLowerCase();
+    return {
+      pending: status === 'pending',
+      reupload: status === 'reupload',
+      rejected: status === 'rejected',
+      verified: status === 'verified',
+    };
+  }
+
+  vehicleDocumentSummary(vehicle: Partial<ProfileVehicle>) {
+    const mandatoryUploaded = [
+      vehicle.rcDocumentUrl,
+      vehicle.frontPhotoUrl,
+      vehicle.backPhotoUrl,
+    ].filter(Boolean).length;
+    return `${mandatoryUploaded}/3 mandatory images uploaded${vehicle.insuranceDocumentUrl ? ' - Insurance uploaded' : ' - Insurance optional'}`;
+  }
+
+  private normalizedVehicleStatus(vehicle: Partial<ProfileVehicle>) {
+    const status = this.vehicleStatus(vehicle);
+    const hasMandatoryImages = Boolean(vehicle.rcDocumentUrl && vehicle.frontPhotoUrl && vehicle.backPhotoUrl);
+    if (status.toLowerCase() === 'verified' && !hasMandatoryImages) {
+      return 'reupload';
+    }
+
+    return status;
+  }
+
+  private restoreRealtimeState() {
+    const savedVehicles = localStorage.getItem('rideshare.vehicles');
+    const savedNotifications = localStorage.getItem('rideshare.notifications');
+    const savedUnreadCount = localStorage.getItem('rideshare.unreadCount');
+
+    try {
+      if (savedVehicles) {
+        const parsedVehicles = JSON.parse(savedVehicles);
+        this.vehicles = Array.isArray(parsedVehicles)
+          ? parsedVehicles.map((vehicle: Partial<ProfileVehicle>) => ({
+              make: vehicle.make || 'Vehicle',
+              model: vehicle.model || '',
+              color: vehicle.color || 'Not set',
+              vehicleId: vehicle.vehicleId,
+              plateNumber: vehicle.plateNumber || 'Plate pending',
+              seats: Number(vehicle.seats || 4),
+              status: this.normalizedVehicleStatus(vehicle),
+              rcDocumentUrl: vehicle.rcDocumentUrl || '',
+              insuranceDocumentUrl: vehicle.insuranceDocumentUrl || '',
+              frontPhotoUrl: vehicle.frontPhotoUrl || '',
+              backPhotoUrl: vehicle.backPhotoUrl || '',
+            }))
+          : this.vehicles;
+      }
+
+      if (savedNotifications) {
+        const parsedNotifications = JSON.parse(savedNotifications);
+        if (Array.isArray(parsedNotifications)) this.notificationCenter = parsedNotifications;
+      }
+
+      if (savedUnreadCount) {
+        this.unreadCount = Number(savedUnreadCount) || 0;
+      }
+    } catch {
+      localStorage.removeItem('rideshare.vehicles');
+      localStorage.removeItem('rideshare.notifications');
+      localStorage.removeItem('rideshare.unreadCount');
+    }
+  }
+
+  private saveRealtimeState() {
+    localStorage.setItem('rideshare.vehicles', JSON.stringify(this.vehicles));
+    localStorage.setItem('rideshare.notifications', JSON.stringify(this.notificationCenter));
+    localStorage.setItem('rideshare.unreadCount', String(this.unreadCount));
+  }
+
+  private bindRealtimeEvents() {
+    this.realtime.events$.subscribe((event) => {
+      this.liveActivity = `Realtime event · ${event.type}`;
+      const payload: any = event.payload;
+      const notification = payload?.notification || payload;
+      if (notification?.title && notification?.message) {
+        this.notificationCenter = [
+          {
+            type: notification.type || 'Realtime',
+            title: notification.title,
+            message: notification.message,
+            time: 'Now',
+            unread: true,
+            icon: notification.type === 'message_received' ? 'chatbubble-ellipses-outline' : 'notifications-outline',
+          },
+          ...this.notificationCenter,
+        ];
+        this.unreadCount += 1;
+        this.saveRealtimeState();
+      }
+    });
+  }
+
+  setRideTab(tab: string) {
+    this.activeRideTab = tab;
+  }
+
+  setAdminTab(tab: string) {
+    this.activeAdminTab = tab;
+  }
+
+  viewAdminUserDetails(user: AdminUser) {
+    this.selectedAdminUser = user;
+  }
+
+  closeAdminUserDetails() {
+    this.selectedAdminUser = null;
+  }
+
+  viewAdminVehicleDetails(vehicle: AdminVehicleCase) {
+    this.selectedAdminVehicle = vehicle;
+  }
+
+  closeAdminVehicleDetails() {
+    this.selectedAdminVehicle = null;
+  }
+
+  openAdminDocumentPreview(document: AdminDocument) {
+    this.selectedAdminDocument = document;
+  }
+
+  closeAdminDocumentPreview() {
+    this.selectedAdminDocument = null;
+  }
+
+  adminDocumentPreviewUrl(document: AdminDocument) {
+    if (document.previewUrl?.startsWith('data:image/')) return document.previewUrl;
+    const statusColors: Record<AdminDocument['status'], string> = {
+      pending: '#fff7ed',
+      verified: '#ecfdf5',
+      reupload: '#eef3ff',
+      rejected: '#fff1f2',
+    };
+    const inkColors: Record<AdminDocument['status'], string> = {
+      pending: '#9a3412',
+      verified: '#047857',
+      reupload: '#1d4ed8',
+      rejected: '#be123c',
+    };
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="360" height="360" viewBox="0 0 360 360"><rect width="360" height="360" rx="28" fill="${statusColors[document.status]}"/><rect x="42" y="54" width="276" height="210" rx="18" fill="#ffffff" stroke="#d7dee8" stroke-width="3"/><text x="180" y="120" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700" fill="${inkColors[document.status]}">${this.escapeSvg(document.label)}</text><text x="180" y="168" text-anchor="middle" font-family="Arial" font-size="16" fill="#475569">${this.escapeSvg(document.value)}</text><text x="180" y="216" text-anchor="middle" font-family="Arial" font-size="15" font-weight="700" fill="${inkColors[document.status]}">${document.status.toUpperCase()}</text><text x="180" y="304" text-anchor="middle" font-family="Arial" font-size="14" fill="#64748b">Document preview</text></svg>`;
+    return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  }
+
+  private escapeSvg(value: string) {
+    return value.replace(/[&<>"']/g, (char) => {
+      const entities: Record<string, string> = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&apos;',
+      };
+      return entities[char];
+    });
+  }
+
+  adminStatusClass(status: string) {
+    return {
+      verified: ['verified', 'active', 'Credited', 'Live', 'Paid', 'Payment success', 'Success'].includes(status),
+      pending: ['pending', 'warning', 'Refund pending', 'Pending', 'Partial Payment', 'disabled', 'expired', 'Processing'].includes(status),
+      rejected: ['blocked', 'rejected', 'Dispute check', 'Failed', 'Refunded', 'Canceled', 'Cancelled'].includes(status),
+      reupload: status === 'reupload',
+    };
+  }
+
+  changeAdminLogPage(direction: number) {
+    this.adminLogPage = Math.min(this.adminLogTotalPages, Math.max(1, this.adminLogPage + direction));
+  }
+
+  setAdminMoneyTab(tab: AdminMoneyTab) {
+    this.adminMoneyTab = tab;
+    this.adminMoneyPage = 1;
+  }
+
+  changeAdminMoneyPage(direction: number) {
+    this.adminMoneyPage = Math.min(this.adminMoneyTotalPages, Math.max(1, this.adminMoneyPage + direction));
+  }
+
+  createAdminAd() {
+    const ad: AdminAd = {
+      id: Date.now(),
+      name: this.adForm.name || 'Untitled ad',
+      type: this.adForm.type,
+      partner: 'Internal Promotions',
+      size: this.adForm.size,
+      placement: this.adForm.placement,
+      area: this.adForm.area || 'All India',
+      state: this.adForm.area || 'All India',
+      startDate: new Date().toISOString().slice(0, 10),
+      endDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      impressions: 0,
+      clicks: 0,
+      ctr: 0,
+      status: 'active',
+    };
+    this.adminAds = [ad, ...this.adminAds];
+    this.adminAdHistory = [
+      { id: Date.now(), adName: ad.name, action: 'Created', details: `${ad.type} scheduled for ${ad.placement}`, adminUser: 'Admin', createdAt: new Date().toLocaleString() },
+      ...this.adminAdHistory,
+    ];
+    this.recordAdminLog('Ads', 'Ad created', 'Admin', ad.name, 'active');
+    this.presentToast('Ad created and scheduled');
+  }
+
+  toggleAdminAd(ad: AdminAd) {
+    ad.status = ad.status === 'active' ? 'disabled' : 'active';
+    this.adminAdHistory = [
+      { id: Date.now(), adName: ad.name, action: ad.status === 'active' ? 'Enabled' : 'Disabled', details: 'Admin toggled ad delivery status.', adminUser: 'Admin', createdAt: new Date().toLocaleString() },
+      ...this.adminAdHistory,
+    ];
+    this.recordAdminLog('Ads', `Ad ${ad.status}`, 'Admin', ad.name, ad.status === 'active' ? 'active' : 'pending');
+  }
+
+  bulkTogglePartnerAds() {
+    const hasActiveAds = this.adminAds.some((ad) => ad.status === 'active');
+    this.adminAds = this.adminAds.map((ad) => ({ ...ad, status: hasActiveAds ? 'disabled' : 'active' }));
+    this.recordAdminLog('Ads', 'Bulk partner ads toggled', 'Admin', `${this.adminAds.length} ads`, 'pending');
+    this.presentToast('Partner ads bulk status updated');
+  }
+
+  renewAdminAd(ad: AdminAd) {
+    ad.status = 'active';
+    ad.endDate = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    this.adminAdHistory = [
+      { id: Date.now(), adName: ad.name, action: 'Renewed', details: `Extended until ${ad.endDate}`, adminUser: 'Admin', createdAt: new Date().toLocaleString() },
+      ...this.adminAdHistory,
+    ];
+    this.recordAdminLog('Ads', 'Ad renewed', 'Admin', ad.name, 'active');
+    this.presentToast('Ad renewed for 30 days');
+  }
+
+  deleteAdminAd(ad: AdminAd) {
+    if (!window.confirm(`Delete ${ad.name}?`)) return;
+    this.adminAds = this.adminAds.filter((item) => item.id !== ad.id);
+    this.recordAdminLog('Ads', 'Ad deleted', 'Admin', ad.name, 'warning');
+    this.presentToast('Ad deleted');
+  }
+
+  exportAdsReport() {
+    const headers = [
+      'Ad ID',
+      'Ad Name',
+      'Partner',
+      'Banner Size',
+      'Placement',
+      'Area/State',
+      'Start Date',
+      'End Date',
+      'Impressions',
+      'Clicks',
+      'CTR %',
+      'Status',
+    ];
+    const rows = this.adminAds.map((ad) => [
+      ad.id,
+      ad.name,
+      ad.partner,
+      ad.size,
+      ad.placement,
+      `${ad.area}/${ad.state}`,
+      ad.startDate,
+      ad.endDate,
+      ad.impressions,
+      ad.clicks,
+      ad.ctr,
+      ad.status,
+    ]);
+    const csv = [headers, ...rows].map((row) => row.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'ads-report.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    this.recordAdminLog('Ads', 'Ads report exported', 'Admin', 'CSV report', 'active');
+  }
+
+  private recordAdminLog(type: AdminLog['type'], action: string, actor: string, target: string, priority: AdminLog['priority']) {
+    const iconByType: Record<AdminLog['type'], string> = {
+      Passenger: 'person-circle-outline',
+      Owner: 'car-outline',
+      Ride: 'map-outline',
+      Security: 'lock-closed-outline',
+      Ads: 'notifications-outline',
+    };
+    this.adminLogs = [
+      {
+        id: Date.now(),
+        type,
+        action,
+        actor,
+        target,
+        priority,
+        icon: iconByType[type],
+        createdAt: new Date().toLocaleString(),
+      },
+      ...this.adminLogs,
+    ];
+  }
+
+  approveAdminUser(user: AdminUser) {
+    user.verification = 'verified';
+    user.status = user.status === 'blocked' ? 'blocked' : 'active';
+    user.documents = user.documents?.map((document) => ({ ...document, status: 'verified' }));
+    if (user.role === 'owner') {
+      this.adminVehicleCases = this.adminVehicleCases.map((vehicle) =>
+        vehicle.ownerId === user.id ? { ...vehicle, status: 'verified' } : vehicle,
+      );
+    }
+    this.pushAdminNotification(user, 'ID verification approved', `${user.name} is now verified for app usage.`);
+    this.presentToast(`${user.name} verified`);
+    this.syncAdminUser(user);
+  }
+
+  requestAdminUserReupload(user: AdminUser) {
+    user.verification = 'reupload';
+    user.documents = user.documents?.map((document) =>
+      document.status === 'verified' ? document : { ...document, status: 'reupload' },
+    );
+    if (user.role === 'owner') {
+      this.adminVehicleCases = this.adminVehicleCases.map((vehicle) =>
+        vehicle.ownerId === user.id && vehicle.status !== 'verified' ? { ...vehicle, status: 'reupload' } : vehicle,
+      );
+    }
+    this.pushAdminNotification(user, 'Document reupload required', `${user.name} must reupload verification documents.`);
+    this.presentToast(`Reupload requested from ${user.name}`);
+    this.syncAdminUser(user);
+  }
+
+  rejectAdminUser(user: AdminUser) {
+    user.verification = 'rejected';
+    user.documents = user.documents?.map((document) => ({ ...document, status: 'rejected' }));
+    if (user.role === 'owner') {
+      this.adminVehicleCases = this.adminVehicleCases.map((vehicle) =>
+        vehicle.ownerId === user.id ? { ...vehicle, status: 'rejected' } : vehicle,
+      );
+    }
+    this.pushAdminNotification(user, 'Verification rejected', `${user.name}'s documents were rejected by admin review.`);
+    this.presentToast(`${user.name} verification rejected`);
+    this.syncAdminUser(user);
+  }
+
+  blockAdminUser(user: AdminUser) {
+    user.status = 'blocked';
+    this.pushAdminNotification(user, 'Account blocked', `${user.name} was blocked by admin security review.`);
+    this.presentToast(`${user.name} blocked`);
+    this.syncAdminUser(user);
+  }
+
+  sendAdminWarning(user: AdminUser) {
+    user.warningCount = Math.min(2, user.warningCount + 1);
+    user.status = user.warningCount >= 2 ? 'blocked' : 'warning';
+    this.pushAdminNotification(
+      user,
+      user.warningCount >= 2 ? 'Second warning issued' : 'Warning issued',
+      user.warningCount >= 2
+        ? `${user.name} received 2 warnings and is blocked until review.`
+        : `${user.name} received warning ${user.warningCount}/2 for policy review.`,
+    );
+    this.presentToast(user.warningCount >= 2 ? `${user.name} blocked after 2 warnings` : `Warning sent to ${user.name}`);
+    this.syncAdminUser(user);
+  }
+
+  adjustAdminBalance(user: AdminUser, amount: number) {
+    user.balance += amount;
+    this.adminTransactions = [
+      {
+        id: Date.now(),
+        user: user.name,
+        role: user.role === 'owner' ? 'Owner' : 'Passenger',
+        title: amount > 0 ? 'Manual admin credit' : 'Manual admin debit',
+        amount,
+        status: amount > 0 ? 'Credited' : 'Adjusted',
+      },
+      ...this.adminTransactions,
+    ];
+    this.adminWalletTransactions = [
+      {
+        id: Date.now() + 1,
+        user: user.name,
+        role: user.role === 'owner' ? 'Owner' : 'Passenger',
+        title: amount > 0 ? 'Manual admin wallet deposit' : 'Manual admin wallet withdraw',
+        amount,
+        status: amount > 0 ? 'Credited' : 'Paid',
+        type: amount > 0 ? 'Deposit' : 'Withdraw',
+        date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+        time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+        method: 'Admin action',
+        reference: `ADM-${Date.now()}`,
+      },
+      ...this.adminWalletTransactions,
+    ];
+    this.presentToast(`${user.name} balance updated`);
+    this.syncAdminUser(user);
+  }
+
+  approveAdminVehicle(vehicle: AdminVehicleCase) {
+    vehicle.status = 'verified';
+    vehicle.documentItems = vehicle.documentItems?.map((document) => ({ ...document, status: 'verified' }));
+    const ownerVehicle = this.vehicles.find((item) => item.plateNumber === vehicle.plate);
+    if (ownerVehicle) ownerVehicle.status = 'verified';
+    this.notificationCenter = [
+      {
+        type: 'Vehicle verification',
+        title: 'Vehicle verified',
+        message: `${vehicle.vehicle} is approved for public ride publishing.`,
+        time: 'Now',
+        unread: true,
+        icon: 'car-outline',
+      },
+      ...this.notificationCenter,
+    ];
+    this.unreadCount += 1;
+    this.saveRealtimeState();
+    this.presentToast(`${vehicle.vehicle} verified`);
+    this.http.patch(`${this.apiUrl}/admin/vehicles/${vehicle.id}/verification`, { status: 'verified' }).subscribe({ error: () => undefined });
+  }
+
+  requestVehicleReupload(vehicle: AdminVehicleCase) {
+    vehicle.status = 'reupload';
+    vehicle.documentItems = vehicle.documentItems?.map((document) =>
+      document.status === 'verified' ? document : { ...document, status: 'reupload' },
+    );
+    this.notificationCenter = [
+      {
+        type: 'Vehicle verification',
+        title: 'Vehicle reupload required',
+        message: `${vehicle.owner} must reupload documents for ${vehicle.vehicle}.`,
+        time: 'Now',
+        unread: true,
+        icon: 'cloud-upload-outline',
+      },
+      ...this.notificationCenter,
+    ];
+    this.unreadCount += 1;
+    this.saveRealtimeState();
+    this.presentToast('Reupload request sent');
+    this.http.patch(`${this.apiUrl}/admin/vehicles/${vehicle.id}/verification`, { status: 'reupload' }).subscribe({ error: () => undefined });
+  }
+
+  deleteAdminTour(tour: AdminTour) {
+    if (!window.confirm(`Archive ${tour.route}?`)) return;
+    this.adminTours = this.adminTours.filter((item) => item.id !== tour.id);
+    this.presentToast('Tour archived');
+  }
+
+  private pushAdminNotification(user: AdminUser, title: string, message: string) {
+    this.notificationCenter = [
+      {
+        type: 'Admin CRM',
+        title,
+        message,
+        time: 'Now',
+        unread: true,
+        icon: user.role === 'owner' ? 'car-outline' : 'person-circle-outline',
+      },
+      ...this.notificationCenter,
+    ];
+    this.unreadCount += 1;
+    this.saveRealtimeState();
+  }
+
+  private syncAdminUser(user: AdminUser) {
+    this.http
+      .patch(`${this.apiUrl}/admin/users/${user.id}`, {
+        status: user.status === 'blocked' ? 'suspended' : 'active',
+        verification_status: user.verification,
+        passenger_verification_status: user.verification,
+        wallet_balance: user.balance,
+        warning_count: user.warningCount,
+      })
+      .subscribe({ error: () => undefined });
+  }
+
+  cancelManagedRide() {
+    this.presentToast('Ride cancellation flow opened');
+  }
+
+  rateRide() {
+    this.presentToast('Rating screen opened');
+  }
+
+  onLocationFocus(field: LocationField) {
+    this.activeLocationField = field;
+    this.onLocationInput(field);
+  }
+
+  onLocationInput(field: LocationField) {
+    const query = this.search[field].trim();
+    this.activeLocationField = field;
+    this.locationError[field] = '';
+
+    if (this.locationTimers[field]) {
+      clearTimeout(this.locationTimers[field]);
+    }
+
+    if (query.length < 2) {
+      this.locationLoading[field] = false;
+      this.locationSuggestions[field] = this.getPopularLocationSuggestions(query);
+      return;
+    }
+
+    this.locationLoading[field] = true;
+    this.locationTimers[field] = setTimeout(() => this.lookupLocations(field, query), 260);
+  }
+
+  selectLocation(field: LocationField, suggestion: LocationSuggestion) {
+    this.search[field] = suggestion.title;
+    this.activeLocationField = null;
+    this.locationError[field] = '';
+    this.locationSuggestions[field] = [];
+    this.presentToast(`${field === 'from' ? 'Pickup' : 'Drop'} set to ${suggestion.title}`);
+  }
+
+  openSearchDatePicker() {
+    this.datePickerOpen = true;
+  }
+
+  onSearchDateChange(event?: CustomEvent) {
+    const selectedValue = event?.detail?.value;
+    const nextDate = Array.isArray(selectedValue) ? selectedValue[0] : selectedValue;
+    if (typeof nextDate === 'string' && nextDate.length >= 10) {
+      this.search.dateValue = nextDate.slice(0, 10);
+    }
+    this.search.date = this.formatSearchDateLabel(this.search.dateValue);
+  }
+
+  get minSearchDate() {
+    return this.toDateInputValue(new Date());
+  }
+
+  closeLocationDropdown(field: LocationField) {
+    setTimeout(() => {
+      if (this.activeLocationField === field) {
+        this.activeLocationField = null;
+      }
+    }, 160);
+  }
+
+  private lookupLocations(field: LocationField, query: string) {
+    this.http
+      .get<Array<Record<string, unknown>>>('https://nominatim.openstreetmap.org/search', {
+        params: {
+          q: query,
+          format: 'jsonv2',
+          addressdetails: '1',
+          limit: '7',
+        },
+      })
+      .subscribe({
+        next: (places) => {
+          this.locationLoading[field] = false;
+          const mappedPlaces = places.map((place, index) => this.mapLocationSuggestion(place, index));
+          this.locationSuggestions[field] = this.mergeLocationSuggestions(mappedPlaces, query);
+          this.locationError[field] = '';
+        },
+        error: () => {
+          this.locationLoading[field] = false;
+          this.locationSuggestions[field] = this.getPopularLocationSuggestions(query);
+          this.locationError[field] = 'Map lookup unavailable. You can still use the typed location.';
+        },
+      });
+  }
+
+  private mapLocationSuggestion(place: Record<string, unknown>, index: number): LocationSuggestion {
+    const displayName = String(place['display_name'] || '');
+    const parts = displayName.split(',').map((part) => part.trim()).filter(Boolean);
+    const address = (place['address'] || {}) as Record<string, unknown>;
+    const title =
+      String(place['name'] || '') ||
+      String(address['road'] || '') ||
+      String(address['suburb'] || '') ||
+      String(address['city'] || '') ||
+      parts[0] ||
+      'Selected location';
+    const subtitleParts = [
+      address['neighbourhood'],
+      address['suburb'],
+      address['city'] || address['town'] || address['village'],
+      address['state'],
+      address['country'],
+    ]
+      .map((part) => String(part || '').trim())
+      .filter(Boolean);
+    return {
+      id: String(place['place_id'] || `map-${index}`),
+      title,
+      subtitle: subtitleParts.join(', ') || parts.slice(1, 4).join(', ') || displayName,
+      lat: Number(place['lat']),
+      lng: Number(place['lon']),
+      source: 'map',
+    };
+  }
+
+  private getPopularLocationSuggestions(query: string): LocationSuggestion[] {
+    const normalizedQuery = query.trim().toLowerCase();
+    const recentLocations: LocationSuggestion[] = [];
+    this.recentSearches.forEach((recent, index) => {
+      recentLocations.push(
+        {
+          id: `recent-from-${index}`,
+          title: recent.from,
+          subtitle: `Recent pickup · ${recent.to}`,
+          source: 'recent',
+        },
+        {
+          id: `recent-to-${index}`,
+          title: recent.to,
+          subtitle: `Recent drop · ${recent.from}`,
+          source: 'recent',
+        },
+      );
+    });
+
+    const typedLocation: LocationSuggestion[] = normalizedQuery.length >= 2
+      ? [
+          {
+            id: `typed-${normalizedQuery}`,
+            title: query.trim(),
+            subtitle: 'Use this exact lane, road, area, or city',
+            source: 'typed',
+          },
+        ]
+      : [];
+
+    return [...typedLocation, ...recentLocations, ...this.popularLocations]
+      .filter((location, index, locations) => {
+        const isDuplicate =
+          locations.findIndex((item) => item.title.toLowerCase() === location.title.toLowerCase()) !== index;
+        const matchesQuery =
+          location.source === 'typed' ||
+          !normalizedQuery ||
+          location.title.toLowerCase().includes(normalizedQuery) ||
+          location.subtitle.toLowerCase().includes(normalizedQuery);
+        return matchesQuery && !isDuplicate;
+      })
+      .slice(0, 6);
+  }
+
+  private mergeLocationSuggestions(mapLocations: LocationSuggestion[], query: string): LocationSuggestion[] {
+    const typedAndSaved = this.getPopularLocationSuggestions(query);
+    return [...mapLocations, ...typedAndSaved]
+      .filter((location, index, locations) => {
+        const title = location.title.toLowerCase();
+        return locations.findIndex((item) => item.title.toLowerCase() === title) === index;
+      })
+      .slice(0, 6);
+  }
+
+  private buildRouteMapUrl(pickup: string, drop: string): SafeResourceUrl {
+    const routeQuery = encodeURIComponent(`${pickup} near ${drop}`);
+    return this.sanitizer.bypassSecurityTrustResourceUrl(`https://maps.google.com/maps?q=${routeQuery}&z=12&output=embed`);
+  }
+
+  get mapFallbackUrl() {
+    const routeQuery = encodeURIComponent(`${this.selectedRide.pickup} to ${this.selectedRide.drop}`);
+    return `https://www.google.com/maps/search/?api=1&query=${routeQuery}`;
+  }
+
+  private buildNearbyRideResults(): RideSearchResult[] {
+    const from = this.formatLocationLabel(this.search.from);
+    const to = this.formatLocationLabel(this.search.to);
+    const baseRides = [
+      {
+        ...this.resultRides[1],
+        route: `${from} to ${to}`,
+        pickup: `${from}, nearest main road pickup`,
+        drop: `${to}, central drop point`,
+        liveLocation: `${from}, nearby approach road`,
+        liveStatus: 'Booked ride · live driver location shared',
+        lastLocationUpdate: 'Updated just now',
+        departure: '07:20',
+        arrival: '09:55',
+        price: 'INR 360',
+        priceValue: 360,
+        seats: 0,
+        totalSeats: 3,
+        bookedSeats: 3,
+        status: 'Full booked' as const,
+        passengers: ['Dev Patel', 'Amina Khan', 'Joel Mathew'],
+      },
+      {
+        ...this.resultRides[0],
+        route: `${from} to ${to}`,
+        pickup: `${from}, Gate 2 / landmark pickup`,
+        drop: `${to}, requested destination side`,
+        liveLocation: `${from}, 600 m from pickup`,
+        liveStatus: 'Driver moving toward pickup',
+        lastLocationUpdate: 'Updated just now',
+        departure: '08:30',
+        arrival: '11:05',
+        price: 'INR 420',
+        priceValue: 420,
+        seats: 3,
+        totalSeats: 4,
+        bookedSeats: 1,
+        status: 'Available' as const,
+        passengers: ['Riya Sharma'],
+      },
+      {
+        ...this.resultRides[2],
+        route: `${from} to ${to}`,
+        pickup: `${from}, service road pickup`,
+        drop: `${to}, nearby lane drop`,
+        liveLocation: `${from}, near service road`,
+        liveStatus: 'Driver waiting near pickup',
+        lastLocationUpdate: 'Updated 2 min ago',
+        departure: '13:00',
+        arrival: '15:35',
+        price: 'INR 390',
+        priceValue: 390,
+        seats: 1,
+        totalSeats: 4,
+        bookedSeats: 3,
+        status: 'Available' as const,
+        passengers: ['Meera Iyer', 'Sahil Jain', 'Anu George'],
+      },
+    ];
+
+    return baseRides.sort((firstRide, secondRide) => {
+      if (firstRide.status !== secondRide.status) {
+        return firstRide.status === 'Full booked' ? -1 : 1;
+      }
+
+      return firstRide.departure.localeCompare(secondRide.departure);
+    });
+  }
+
+  private formatLocationLabel(location: string) {
+    const cleaned = location.trim().replace(/\s+/g, ' ');
+    return cleaned || 'Selected location';
+  }
+
+  private formatSearchDateLabel(dateValue: string) {
+    const selectedDate = new Date(`${dateValue}T00:00:00`);
+    const today = new Date();
+    const tomorrow = new Date();
+    today.setHours(0, 0, 0, 0);
+    tomorrow.setHours(0, 0, 0, 0);
+    tomorrow.setDate(today.getDate() + 1);
+
+    if (selectedDate.getTime() === today.getTime()) {
+      return 'Today';
+    }
+
+    if (selectedDate.getTime() === tomorrow.getTime()) {
+      return 'Tomorrow';
+    }
+
+    return selectedDate.toLocaleDateString([], {
+      day: 'numeric',
+      month: 'short',
+      year: selectedDate.getFullYear() === today.getFullYear() ? undefined : 'numeric',
+    });
+  }
+
+  private toDateInputValue(date: Date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  async searchRides() {
+    this.searchState = 'loading';
+    await this.presentToast('Searching verified rides near you');
+    if (!this.search.from || !this.search.to || this.search.seats < 1) {
+      this.searchState = 'error';
+      this.presentToast('Enter route and passengers');
+      return;
+    }
+
+    const nearbyResults = this.buildNearbyRideResults();
+    this.resultRides = nearbyResults;
+
+    this.api
+      .getRides({
+        origin: this.search.from,
+        destination: this.search.to,
+        date: this.search.dateValue,
+        instant: this.filters.find((filter) => filter.key === 'instant')?.active,
+        verified: this.filters.find((filter) => filter.key === 'verified')?.active,
+      })
+      .subscribe({
+        next: (response) => {
+          this.searchState = 'ready';
+          if (response.data.length) {
+            const backendRides = response.data.map((ride: any, index: number) => {
+              const templateRide = nearbyResults[index % nearbyResults.length];
+              const availableSeats = Number(ride.seats_available ?? templateRide.seats);
+              const totalSeats = Number(ride.total_seats ?? templateRide.totalSeats);
+              return {
+                ...templateRide,
+                departure: ride.departure_at
+                  ? new Date(ride.departure_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  : templateRide.departure,
+                route: `${this.search.from} to ${this.search.to}`,
+                price: `INR ${ride.price_per_seat || templateRide.priceValue}`,
+                priceValue: Number(ride.price_per_seat || templateRide.priceValue),
+                seats: index === 0 ? 0 : availableSeats,
+                totalSeats,
+                bookedSeats: index === 0 ? totalSeats : Math.max(0, totalSeats - availableSeats),
+                status: (index === 0 || availableSeats < 1 ? 'Full booked' : 'Available') as RideSearchResult['status'],
+                instant: Boolean(ride.instant_booking ?? templateRide.instant),
+                pickup: templateRide.pickup,
+                drop: templateRide.drop,
+              };
+            }).sort((firstRide, secondRide) => {
+              if (firstRide.status !== secondRide.status) {
+                return firstRide.status === 'Full booked' ? -1 : 1;
+              }
+
+              return firstRide.departure.localeCompare(secondRide.departure);
+            });
+            this.resultRides = backendRides.length >= 3 ? backendRides : nearbyResults;
+          }
+          this.goTo('/results');
+        },
+        error: () => {
+          this.searchState = this.search.to.toLowerCase().includes('nowhere') ? 'empty' : 'ready';
+          if (this.searchState === 'ready') {
+            this.goTo('/results');
+          }
+        },
+      });
+  }
+
+  retrySearch() {
+    this.search.to = 'Mysuru';
+    this.searchRides();
+  }
+
+  increasePassengers() {
+    this.search.seats = Math.min(6, this.search.seats + 1);
+  }
+
+  decreasePassengers() {
+    this.search.seats = Math.max(1, this.search.seats - 1);
+  }
+
+  applyRecentSearch(recent: { from: string; to: string; date: string; passengers: number }) {
+    this.search = {
+      from: recent.from,
+      to: recent.to,
+      date: recent.date,
+      dateValue: this.search.dateValue,
+      seats: recent.passengers,
+    };
+    this.searchRides();
+  }
+
+  clearRecentSearches() {
+    this.recentSearches = [];
+    this.presentToast('Recent searches cleared');
+  }
+
+  private navLabel(tab: 'search' | 'publish' | 'yourRides' | 'inbox' | 'profile') {
+    const labels = {
+      search: 'Search',
+      publish: 'Publish',
+      yourRides: 'Your Rides',
+      inbox: 'Inbox',
+      profile: 'Profile',
+    };
+
+    return labels[tab];
+  }
+
+  publishRide() {
+    this.publishStep = this.publishStep === 4 ? 1 : this.publishStep + 1;
+    this.presentToast(this.publishStep === 1 ? 'Ride draft published' : `Step ${this.publishStep} ready`);
+  }
+
+  toggleDarkMode() {
+    this.isDark = !this.isDark;
+    document.body.classList.toggle('dark', this.isDark);
+    document.body.classList.toggle('ion-palette-dark', this.isDark);
+  }
+
+  async simulateBackendFlow() {
+    await this.presentToast('Backend flow queued: FCM/APNs payload prepared');
+    this.status = 'Backend notification flow simulated.';
+  }
+
+  closeSuccess() {
+    this.showSuccess = false;
+  }
+
+  async presentToast(message: string) {
+    const toast = await this.toastController.create({
+      message,
+      duration: 1800,
+      position: 'top',
+      color: 'primary',
+    });
+    await toast.present();
+  }
+
+  async enableNotifications() {
+    if (!Capacitor.isNativePlatform()) {
+      this.status = 'Push registration needs a native Android or iOS build.';
+      this.presentToast('Native Android/iOS build required for push tokens');
+      return;
+    }
+
+    this.status = 'Requesting notification permissions...';
+
+    const localPermission = await LocalNotifications.requestPermissions();
+    if (localPermission.display !== 'granted') {
+      this.status = 'Local notification permission was not granted.';
+      return;
+    }
+
+    const pushPermission = await PushNotifications.requestPermissions();
+    if (pushPermission.receive !== 'granted') {
+      this.status = 'Push notification permission was not granted.';
+      return;
+    }
+
+    await this.bindPushListeners();
+    await PushNotifications.register();
+    this.status = 'Push registration requested. Waiting for device token...';
+  }
+
+  async sendLocalTest() {
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: Date.now() % 100000,
+          title: 'Local notification works',
+          body: 'This was scheduled inside the Ionic app.',
+          schedule: { at: new Date(Date.now() + 1000) },
+        },
+      ],
+    });
+    this.status = 'Local notification scheduled.';
+  }
+
+  async registerToken(token: string) {
+    const payload = {
+      token,
+      platform: this.platform,
+      deviceName: this.deviceName,
+    };
+
+    this.http.post(`${this.apiUrl}/devices`, payload).subscribe({
+      next: () => {
+        this.status = 'Device token saved in backend.';
+      },
+      error: (error) => {
+        this.status = `Token received, backend save failed: ${error.message}`;
+      },
+    });
+  }
+
+  sendBackendTest() {
+    if (!this.token) {
+      this.status = 'Register for push first so the backend has a token.';
+      return;
+    }
+
+    this.http
+      .post(`${this.apiUrl}/notifications/test`, {
+        token: this.token,
+        platform: this.platform,
+        title: 'Backend push works',
+        body: 'This push was sent by the Node.js API.',
+      })
+      .subscribe({
+        next: () => {
+          this.status = 'Backend push request sent.';
+        },
+        error: (error) => {
+          this.status = `Backend push failed: ${error.message}`;
+        },
+      });
+  }
+
+  private async bindPushListeners() {
+    await PushNotifications.removeAllListeners();
+
+    await PushNotifications.addListener('registration', (token: Token) => {
+      this.token = token.value;
+      this.status = 'Device token received.';
+      this.registerToken(token.value);
+    });
+
+    await PushNotifications.addListener('registrationError', (error) => {
+      this.status = `Push registration failed: ${JSON.stringify(error)}`;
+    });
+
+    await PushNotifications.addListener(
+      'pushNotificationReceived',
+      (notification: PushNotificationSchema) => {
+        this.lastNotification = notification.title || notification.body || 'Push received';
+      },
+    );
+
+    await PushNotifications.addListener(
+      'pushNotificationActionPerformed',
+      (action: ActionPerformed) => {
+        this.lastNotification = `Opened: ${action.notification.title || action.notification.body || 'notification'}`;
+      },
+    );
+  }
+
+}

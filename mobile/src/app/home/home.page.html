@@ -1,0 +1,1703 @@
+<ion-content [fullscreen]="true">
+  <div class="intro-splash" *ngIf="showIntroSplash" aria-label="shareMILES loading">
+    <img src="assets/app-logo.png" alt="shareMILES" />
+  </div>
+
+  <main class="app-shell">
+    <ng-container [ngSwitch]="currentRoute">
+      <section *ngSwitchCase="'/login'" class="screen-stack login-screen">
+        <header class="login-hero">
+          <strong>RideShare</strong>
+          <span>Verified shared rides for passengers and drivers.</span>
+        </header>
+
+        <article class="minimal-card auth-card">
+          <div class="section-title">
+            <h1>{{ authMode === 'signup' ? 'Create account' : 'Mobile login' }}</h1>
+            <p>Use WhatsApp OTP verification to continue.</p>
+          </div>
+          <div class="segmented-tabs auth-tabs">
+            <button type="button" [class.active]="authMode === 'login'" (click)="authMode = 'login'">Login</button>
+            <button type="button" [class.active]="authMode === 'signup'" (click)="authMode = 'signup'">Signup</button>
+          </div>
+          <label class="form-row input-row" *ngIf="authMode === 'signup'">
+            <span>
+              <small>Full name</small>
+              <input [(ngModel)]="loginForm.fullName" aria-label="Full name" autocomplete="name" />
+            </span>
+            <ion-icon name="person-circle-outline"></ion-icon>
+          </label>
+          <label class="form-row input-row">
+            <span>
+              <small>WhatsApp mobile number</small>
+              <input
+                [ngModel]="loginForm.phone"
+                (ngModelChange)="onLoginPhoneInput($event)"
+                aria-label="WhatsApp mobile number"
+                autocomplete="tel"
+                inputmode="numeric"
+                maxlength="10"
+                pattern="[0-9]*"
+                placeholder="10 digit number"
+              />
+            </span>
+            <strong class="country-code">+91</strong>
+          </label>
+          <div class="chip-group auth-role-row" *ngIf="authMode === 'signup'">
+            <button type="button" [class.active]="loginForm.role === 'passenger'" (click)="loginForm.role = 'passenger'">
+              Passenger
+            </button>
+            <button type="button" [class.active]="loginForm.role === 'driver'" (click)="loginForm.role = 'driver'">
+              Driver
+            </button>
+          </div>
+          <button class="secondary-button" type="button" (click)="sendLoginOtp()" [disabled]="otpSending">
+            {{ otpSending ? 'Sending...' : otpSent ? 'Resend WhatsApp OTP' : 'Send WhatsApp OTP' }}
+          </button>
+          <label class="form-row input-row">
+            <span>
+              <small>OTP</small>
+              <input [(ngModel)]="loginForm.otp" aria-label="OTP" autocomplete="one-time-code" inputmode="numeric" maxlength="10" />
+            </span>
+            <ion-icon name="shield-checkmark-outline"></ion-icon>
+          </label>
+          <button class="primary-button" type="button" (click)="login()" [disabled]="loginSubmitting">
+            {{ loginSubmitting ? 'Verifying...' : authMode === 'signup' ? 'Verify & Signup' : 'Verify & Login' }}
+          </button>
+        </article>
+
+        <article class="realtime-strip">
+          <ion-icon name="notifications-outline"></ion-icon>
+          <span>{{ liveActivity }}</span>
+        </article>
+      </section>
+
+      <section *ngSwitchCase="'/search'" class="screen-stack search-screen">
+        <header class="app-header search-header">
+          <strong>RideShare</strong>
+          <button
+            class="icon-button notification-button"
+            type="button"
+            (click)="goTo('/notifications')"
+            aria-label="Open notifications"
+          >
+            <ion-icon name="notifications-outline"></ion-icon>
+            <b class="nav-badge" *ngIf="unreadCount">{{ unreadCount }}</b>
+          </button>
+        </header>
+
+        <article class="minimal-card search-card">
+          <div class="form-row input-row location-field" [class.open]="activeLocationField === 'from'">
+            <span>
+              <small>Leaving From</small>
+              <input
+                [(ngModel)]="search.from"
+                (focus)="onLocationFocus('from')"
+                (input)="onLocationInput('from')"
+                (blur)="closeLocationDropdown('from')"
+                aria-label="Leaving From"
+                autocomplete="off"
+              />
+            </span>
+            <ion-icon name="location-outline"></ion-icon>
+            <div class="location-dropdown" *ngIf="activeLocationField === 'from'">
+              <div class="location-state" *ngIf="locationLoading.from">Searching map locations...</div>
+              <button
+                class="location-option"
+                type="button"
+                *ngFor="let location of locationSuggestions.from"
+                (mousedown)="selectLocation('from', location)"
+              >
+                <ion-icon
+                  [name]="location.source === 'map' || location.source === 'typed' ? 'map-outline' : 'time-outline'"
+                ></ion-icon>
+                <span>
+                  <strong>{{ location.title }}</strong>
+                  <small>{{ location.subtitle }}</small>
+                </span>
+              </button>
+              <div class="location-state muted" *ngIf="locationError.from">{{ locationError.from }}</div>
+            </div>
+          </div>
+          <div class="form-row input-row location-field" [class.open]="activeLocationField === 'to'">
+            <span>
+              <small>Going To</small>
+              <input
+                [(ngModel)]="search.to"
+                (focus)="onLocationFocus('to')"
+                (input)="onLocationInput('to')"
+                (blur)="closeLocationDropdown('to')"
+                aria-label="Going To"
+                autocomplete="off"
+              />
+            </span>
+            <ion-icon name="flag-outline"></ion-icon>
+            <div class="location-dropdown" *ngIf="activeLocationField === 'to'">
+              <div class="location-state" *ngIf="locationLoading.to">Searching map locations...</div>
+              <button
+                class="location-option"
+                type="button"
+                *ngFor="let location of locationSuggestions.to"
+                (mousedown)="selectLocation('to', location)"
+              >
+                <ion-icon
+                  [name]="location.source === 'map' || location.source === 'typed' ? 'map-outline' : 'time-outline'"
+                ></ion-icon>
+                <span>
+                  <strong>{{ location.title }}</strong>
+                  <small>{{ location.subtitle }}</small>
+                </span>
+              </button>
+              <div class="location-state muted" *ngIf="locationError.to">{{ locationError.to }}</div>
+            </div>
+          </div>
+          <button class="form-row input-row date-row" type="button" (click)="openSearchDatePicker()">
+            <span>
+              <small>Date selector</small>
+              <strong>{{ search.date }}</strong>
+            </span>
+            <ion-icon name="calendar-outline"></ion-icon>
+          </button>
+          <ion-modal
+            class="date-picker-modal"
+            [isOpen]="datePickerOpen"
+            [breakpoints]="[0, 0.78, 0.95]"
+            [initialBreakpoint]="0.78"
+            (didDismiss)="datePickerOpen = false"
+          >
+            <ng-template>
+              <div class="date-picker-content">
+                <ion-datetime
+                  [value]="search.dateValue"
+                  [min]="minSearchDate"
+                  presentation="date"
+                  [showDefaultButtons]="true"
+                  doneText="Select"
+                  cancelText="Cancel"
+                  (ionChange)="onSearchDateChange($event); datePickerOpen = false"
+                  (ionCancel)="datePickerOpen = false"
+                ></ion-datetime>
+              </div>
+            </ng-template>
+          </ion-modal>
+          <div class="form-row seat-row passenger-count-row">
+            <div class="passenger-copy">
+              <small>Passenger count</small>
+            </div>
+            <div class="stepper passenger-stepper">
+              <button type="button" (click)="decreasePassengers()" aria-label="Decrease passengers">
+                <ion-icon name="remove-outline"></ion-icon>
+              </button>
+              <strong aria-live="polite">{{ search.seats }}</strong>
+              <button type="button" (click)="increasePassengers()" aria-label="Increase passengers">
+                <ion-icon name="add-outline"></ion-icon>
+              </button>
+            </div>
+          </div>
+          <button class="primary-button" type="button" (click)="searchRides()">Search Rides</button>
+        </article>
+
+        <section>
+          <div class="section-title inline">
+            <h2>Recent searches</h2>
+            <button type="button" (click)="clearRecentSearches()">Clear</button>
+          </div>
+          <div class="history-grid" *ngIf="recentSearches.length; else emptyRecent">
+            <button class="history-card" type="button" *ngFor="let recent of recentSearches" (click)="applyRecentSearch(recent)">
+              <ion-icon name="time-outline"></ion-icon>
+              <span>{{ recent.from }} to {{ recent.to }}</span>
+              <small>{{ recent.date }} · {{ recent.passengers }} passengers</small>
+            </button>
+          </div>
+          <ng-template #emptyRecent>
+            <article class="empty-state">
+              <ion-icon name="search-outline"></ion-icon>
+              <strong>No recent searches</strong>
+              <span>Your route history will appear here.</span>
+            </article>
+          </ng-template>
+        </section>
+
+        <section>
+          <div class="section-title inline">
+            <h2>Sponsored</h2>
+          </div>
+          <div class="ad-row">
+            <article class="ad-card" *ngFor="let ad of sponsoredAds" [class.alt]="ad.variant === 'alt'">
+              <small>{{ ad.label }}</small>
+              <strong>{{ ad.title }}</strong>
+              <span>{{ ad.body }}</span>
+            </article>
+          </div>
+        </section>
+      </section>
+
+      <section *ngSwitchCase="'/results'" class="screen-stack results-screen">
+        <header class="app-header results-header">
+          <button class="icon-button" type="button" (click)="goBackToSearch()" aria-label="Back">
+            <ion-icon name="arrow-back-outline"></ion-icon>
+          </button>
+          <div>
+            <strong>{{ search.from }} to {{ search.to }}</strong>
+            <span>{{ search.date }} · {{ search.seats }} passengers</span>
+          </div>
+          <button class="icon-button" type="button" (click)="toggleFilterDropdown()" aria-label="Filters">
+            <ion-icon name="funnel-outline"></ion-icon>
+          </button>
+          <div class="filter-dropdown" *ngIf="filterDropdownOpen">
+            <div class="chip-group result-filters">
+              <button type="button" *ngFor="let filter of filters" [class.active]="filter.active" (click)="toggleFilter(filter)">
+                {{ filter.label }}
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <article class="ride-card" *ngFor="let ride of resultRides" [class.full-booked]="ride.status === 'Full booked'">
+          <img [src]="ride.photo" [alt]="ride.driver" />
+          <div class="ride-main">
+            <div class="ride-topline">
+              <strong>{{ ride.driver }}</strong>
+              <span>{{ ride.price }}</span>
+            </div>
+            <p>{{ ride.departure }} → {{ ride.arrival }} · {{ ride.route }}</p>
+            <div class="ride-meta">
+              <span>★ {{ ride.rating }}</span>
+              <span>{{ ride.seats }} of {{ ride.totalSeats }} seats left</span>
+              <span class="badge" [class.full]="ride.status === 'Full booked'">{{ ride.status }}</span>
+              <span *ngIf="ride.instant" class="badge">Instant</span>
+            </div>
+            <div class="dual-actions result-actions">
+              <button type="button" (click)="viewRide(ride)">View Ride</button>
+              <button type="button" [disabled]="ride.seats < 1" (click)="bookSeat(ride)">
+                {{ ride.seats < 1 ? 'Full Booked' : 'Book Seat' }}
+              </button>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section *ngSwitchCase="'/ride-details'" class="screen-stack ride-details-screen">
+        <header class="app-header">
+          <button class="icon-button" type="button" (click)="goTo(rideDetailsBackRoute)" aria-label="Back">
+            <ion-icon name="arrow-back-outline"></ion-icon>
+          </button>
+          <div>
+            <strong>Ride details</strong>
+            <span>{{ selectedRide.route }}</span>
+          </div>
+          <button class="icon-button" type="button" (click)="messageDriver()" aria-label="Message driver">
+            <ion-icon name="chatbubble-ellipses-outline"></ion-icon>
+          </button>
+        </header>
+
+        <article class="minimal-card past-rating-card" *ngIf="currentRideIsPast">
+          <div class="section-title compact">
+            <h2>Leave rating for owner</h2>
+            <p>Past rides are view-only. You can still share feedback.</p>
+          </div>
+          <div class="rating-stars" role="radiogroup" aria-label="Owner rating">
+            <button type="button" *ngFor="let star of [1,2,3,4,5]" [class.active]="pastRideRating >= star" (click)="setPastRideRating(star)">
+              <ion-icon name="star-outline"></ion-icon>
+            </button>
+          </div>
+          <label class="feedback-box">
+            <span>Feedback</span>
+            <textarea [(ngModel)]="pastRideFeedback" rows="3" placeholder="Share your experience"></textarea>
+          </label>
+          <button class="primary-button small-cta" type="button" (click)="submitPastRideRating()">Submit Rating</button>
+        </article>
+
+        <article class="minimal-card driver-card owner-mini-card pre-map-owner-card" *ngIf="false" role="button" tabindex="0" (click)="openOwnerProfile()" (keydown.enter)="openOwnerProfile()">
+          <img [src]="selectedRide.photo" [alt]="selectedRide.driver" />
+          <div>
+            <strong>{{ selectedRide.driver }}</strong>
+            <span>★ {{ selectedRide.rating }} · {{ selectedRide.trips }} trips</span>
+            <small>Verified driver · View profile</small>
+          </div>
+        </article>
+
+        <article class="map-preview route-map-card" *ngIf="!currentRideIsPast">
+          <iframe [src]="mapEmbedUrl" title="Route map preview"></iframe>
+          <div class="live-location-card">
+            <ion-icon name="location-outline"></ion-icon>
+            <span>
+              <small>Live location</small>
+              <strong>{{ selectedRide.liveLocation }}</strong>
+              <em>{{ selectedRide.liveStatus }} · {{ selectedRide.lastLocationUpdate }}</em>
+            </span>
+            <a class="map-icon-link" [href]="mapFallbackUrl" target="_blank" rel="noopener" aria-label="Open map">
+              <ion-icon name="map-outline"></ion-icon>
+            </a>
+          </div>
+          <div class="route-fit-row">
+            <span>{{ selectedRide.pickup }}</span>
+            <ion-icon name="map-outline"></ion-icon>
+            <span>{{ selectedRide.drop }}</span>
+            <strong>{{ selectedRide.duration }}</strong>
+          </div>
+        </article>
+
+        <article class="minimal-card driver-card owner-mini-card" *ngIf="!currentRideIsPast" role="button" tabindex="0" (click)="openOwnerProfile()" (keydown.enter)="openOwnerProfile()">
+          <img [src]="selectedRide.photo" [alt]="selectedRide.driver" />
+          <div>
+            <strong>{{ selectedRide.driver }}</strong>
+            <span>Rating {{ selectedRide.rating }} - {{ selectedRide.trips }} trips</span>
+            <small>Verified driver - tap to view profile</small>
+          </div>
+        </article>
+
+        <article class="minimal-card confirmation-card">
+          <div class="summary-row"><span>Source</span><strong>{{ selectedRide.pickup }}</strong></div>
+          <div class="summary-row"><span>Destination</span><strong>{{ selectedRide.drop }}</strong></div>
+          <div class="summary-row"><span>Timing</span><strong>{{ selectedRide.departure }} → {{ selectedRide.arrival }} · {{ selectedRide.duration }}</strong></div>
+          <div class="summary-row"><span>Available seats</span><strong>{{ selectedRide.seats }} of {{ selectedRide.totalSeats }} · {{ selectedRide.status }}</strong></div>
+        </article>
+
+        <article class="minimal-card confirmed-vehicle-card compact-vehicle-card clickable-card" *ngIf="!currentRideIsPast" role="button" tabindex="0" (click)="openOwnerProfile()" (keydown.enter)="openOwnerProfile()">
+          <div class="section-title compact">
+            <h2>Confirmed ride vehicle</h2>
+          </div>
+          <div>
+            <strong>{{ driverPublicProfile.vehicle }}</strong>
+            <span>{{ driverPublicProfile.vehicleMeta }}</span>
+            <small>{{ selectedRide.passengers.length }} of {{ selectedRide.totalSeats }} confirmed passengers</small>
+          </div>
+        </article>
+
+        <article class="minimal-card" *ngIf="!currentRideIsPast">
+          <div class="section-title compact">
+            <h2>Passenger profiles</h2>
+          </div>
+          <div class="passenger-profile-list" *ngIf="confirmedPassengerProfiles.length; else noPassengerProfilesTpl">
+            <article class="passenger-profile-card compact-passenger-card" *ngFor="let passenger of confirmedPassengerProfiles" role="button" tabindex="0" (click)="openPassengerProfile(passenger)" (keydown.enter)="openPassengerProfile(passenger)">
+              <img [src]="passenger.photo" [alt]="passenger.name" />
+              <div>
+                <strong>{{ passenger.name }}</strong>
+                <small>{{ passenger.verified ? 'Verified passenger' : 'Verification pending' }}</small>
+                <div class="profile-chip-row compact single-row">
+                  <span *ngFor="let mood of passenger.moods">{{ mood }}</span>
+                </div>
+              </div>
+            </article>
+          </div>
+          <ng-template #noPassengerProfilesTpl>
+            <div class="empty-inline">No confirmed passengers yet</div>
+          </ng-template>
+        </article>
+
+        <article class="minimal-card" *ngIf="!currentRideIsPast">
+          <div class="section-title compact">
+            <h2>Ride preferences</h2>
+          </div>
+          <div class="preference-grid">
+            <span *ngFor="let preference of ridePreferences">{{ preference.label }} · {{ preference.value }}</span>
+          </div>
+          <div class="ride-preference-actions">
+            <button type="button" class="secondary-mini" (click)="goTo(rideDetailsBackRoute)">Back</button>
+            <button type="button" [disabled]="selectedRide.seats < 1" (click)="confirmBooking()">
+              {{ selectedRide.seats < 1 ? 'Full booked' : 'Confirm' }}
+            </button>
+          </div>
+        </article>
+
+        <div class="sticky-summary" *ngIf="!currentRideIsPast">
+          <span>INR {{ selectedRide.priceValue + selectedRide.serviceFee }}</span>
+          <small>Final fare including service fee</small>
+        </div>
+      </section>
+
+      <section *ngSwitchCase="'/publish'" class="screen-stack">
+        <ng-container *ngTemplateOutlet="publishStepTwo"></ng-container>
+      </section>
+
+      <section *ngSwitchCase="'/publish/preferences'" class="screen-stack">
+        <ng-container *ngTemplateOutlet="publishStepThree"></ng-container>
+      </section>
+
+      <section *ngSwitchCase="'/publish/confirm'" class="screen-stack">
+        <ng-container *ngTemplateOutlet="publishStepFour"></ng-container>
+      </section>
+
+      <section *ngSwitchCase="'/your-rides'" class="screen-stack">
+        <header class="app-header centered">
+          <span></span>
+          <strong>Ride management</strong>
+          <span></span>
+        </header>
+        <div class="segmented-tabs">
+          <button type="button" *ngFor="let tabName of rideTabs" [class.active]="activeRideTab === tabName" (click)="setRideTab(tabName)">
+            {{ tabName }}
+          </button>
+        </div>
+        <ng-container *ngIf="filteredManagedRides.length; else noManagedRides">
+          <article class="ride-card clickable-card" *ngFor="let ride of filteredManagedRides" role="button" tabindex="0" (click)="viewManagedRide(ride)" (keydown.enter)="viewManagedRide(ride)">
+            <img [src]="ride.image" [alt]="ride.driver" />
+            <div class="ride-main">
+              <div class="ride-topline">
+                <strong>{{ ride.route }}</strong>
+                <span>{{ ride.price }}</span>
+              </div>
+              <p>{{ ride.date }} · {{ ride.time }} · {{ ride.driver }}</p>
+              <div class="ride-meta">
+                <span class="badge">{{ ride.status }}</span>
+              </div>
+              <div class="triple-actions" *ngIf="ride.tab !== 'Past'">
+                <button type="button" (click)="cancelManagedRide(); $event.stopPropagation()">Cancel Ride</button>
+                <button type="button" (click)="viewManagedRide(ride); $event.stopPropagation()">View Details</button>
+                <button type="button" (click)="rateRide(); $event.stopPropagation()">Rate Ride</button>
+              </div>
+            </div>
+          </article>
+        </ng-container>
+        <ng-template #noManagedRides>
+          <article class="empty-state illustration">
+            <ion-icon name="car-outline"></ion-icon>
+            <strong>No rides found</strong>
+            <span>Your {{ activeRideTab | lowercase }} rides will appear here.</span>
+            <button type="button" (click)="goTo('/publish')">Publish a ride</button>
+          </article>
+        </ng-template>
+      </section>
+
+      <section *ngSwitchCase="'/chat'" class="screen-stack chat-screen">
+        <header class="app-header">
+          <button class="icon-button" type="button" (click)="goTo('/inbox')" aria-label="Back">
+            <ion-icon name="arrow-back-outline"></ion-icon>
+          </button>
+          <img class="header-avatar" [src]="selectedRide.photo" [alt]="selectedRide.driver" />
+          <div>
+            <strong>{{ selectedRide.driver }}</strong>
+            <span>Online · Bengaluru to Mysuru</span>
+          </div>
+          <button class="icon-button" type="button" aria-label="Ride details">
+            <ion-icon name="car-outline"></ion-icon>
+          </button>
+        </header>
+        <article class="ride-summary-strip">
+          <strong>Today · 08:30 AM</strong>
+          <span>Bengaluru Central to Mysuru Palace Road</span>
+        </article>
+        <div class="chat-message" *ngFor="let chat of chats" [class.mine]="chat.from === 'me'">
+          <img class="chat-avatar" [src]="chatAvatar(chat.from)" [alt]="chat.from === 'me' ? profile.fullName : selectedRide.driver" />
+          <article class="chat-bubble" [class.mine]="chat.from === 'me'">
+            <button
+              class="delete-message"
+              type="button"
+              *ngIf="chat.from === 'me'"
+              (click)="deleteChatMessage(chat.id)"
+              aria-label="Delete message"
+            >
+              <ion-icon name="close-circle-outline"></ion-icon>
+            </button>
+            <img
+              class="chat-image-preview"
+              *ngIf="chat.attachmentType === 'image' && chat.previewUrl"
+              [src]="chat.previewUrl"
+              [alt]="chat.attachment || 'Shared image'"
+            />
+            <span>{{ chat.text }}</span>
+            <b *ngIf="chat.attachment" class="attachment-pill">{{ chat.attachment }}</b>
+            <small>{{ chat.time }}</small>
+          </article>
+        </div>
+        <div class="typing-indicator"><span></span><span></span><span></span> Driver is typing</div>
+        <div class="attached-file" *ngIf="attachedFileName">
+          <img
+            *ngIf="attachedFileType === 'image' && attachedPreviewUrl"
+            [src]="attachedPreviewUrl"
+            [alt]="attachedFileName"
+          />
+          <ion-icon *ngIf="attachedFileType !== 'image'" name="document-attach-outline"></ion-icon>
+          <span>{{ attachedFileName }}</span>
+          <button type="button" (click)="clearChatAttachment()" aria-label="Remove attachment">
+            <ion-icon name="close-circle-outline"></ion-icon>
+          </button>
+        </div>
+        <div class="chat-composer">
+          <label class="composer-attach" aria-label="Attach file">
+            <ion-icon name="add-circle-outline"></ion-icon>
+            <input type="file" (change)="attachChatFile($event)" />
+          </label>
+          <input
+            placeholder="Message"
+            aria-label="Message"
+            [(ngModel)]="chatDraft"
+            (keyup.enter)="sendChatMessage()"
+          />
+          <button type="button" aria-label="Send message" (click)="sendChatMessage()">
+            <ion-icon name="chevron-forward-outline"></ion-icon>
+          </button>
+        </div>
+      </section>
+
+      <section *ngSwitchCase="'/inbox'" class="screen-stack">
+        <header class="app-header centered">
+          <span></span>
+          <strong>Inbox</strong>
+          <span></span>
+        </header>
+        <label class="search-field">
+          <ion-icon name="search-outline"></ion-icon>
+          <input placeholder="Search messages" aria-label="Search messages" />
+        </label>
+        <article class="conversation-card" *ngFor="let conversation of conversations" (click)="goTo('/chat')">
+          <img [src]="conversation.image" [alt]="conversation.name" />
+          <div>
+            <strong>{{ conversation.name }}</strong>
+            <span>{{ conversation.trip }}</span>
+            <p>{{ conversation.last }}</p>
+          </div>
+          <aside>
+            <small>{{ conversation.time }}</small>
+            <b *ngIf="conversation.unread">{{ conversation.unread }}</b>
+            <ion-icon *ngIf="conversation.seen" name="checkmark-circle-outline"></ion-icon>
+          </aside>
+        </article>
+      </section>
+
+      <section *ngSwitchCase="'/profile'" class="screen-stack profile-screen">
+        <header class="app-header profile-simple-header">
+          <span></span>
+          <strong>Profile</strong>
+          <button class="icon-button profile-settings-button" type="button" (click)="goTo('/settings')" aria-label="Edit profile settings">
+            <ion-icon name="settings-outline"></ion-icon>
+          </button>
+        </header>
+        <article class="minimal-card profile-summary">
+          <label class="profile-avatar-upload" aria-label="Upload profile photo">
+            <img class="profile-avatar" [src]="currentUserAvatar" alt="Profile photo" />
+            <input type="file" accept="image/*" (change)="updateProfilePhoto($event)" />
+            <span><ion-icon name="camera-outline"></ion-icon></span>
+          </label>
+          <div>
+            <div class="profile-name-row">
+              <h1>{{ profile.fullName }}</h1>
+              <button class="profile-wallet-chip" type="button" (click)="goTo('/payments')" aria-label="Open wallet balance">
+                <ion-icon name="wallet-outline"></ion-icon>
+                <span>INR {{ walletBalance | number: '1.0-0' }}</span>
+              </button>
+            </div>
+            <p>{{ profile.age }} years · {{ profile.rating }} rating</p>
+            <span><ion-icon name="shield-checkmark-outline"></ion-icon> {{ profile.verificationStatus === 'verified' ? 'Verified owner' : 'Owner verification pending' }}</span>
+            <span><ion-icon name="person-circle-outline"></ion-icon> Passenger {{ passengerVerificationLabel }}</span>
+          </div>
+        </article>
+        <article class="minimal-card">
+          <div class="section-title compact"><h2>Bio</h2></div>
+          <p class="body-copy">{{ profile.bio }}</p>
+        </article>
+        <article class="minimal-card passenger-verification-card">
+          <div class="section-title compact inline">
+            <h2>Passenger Gov ID</h2>
+            <b class="vehicle-status" [ngClass]="{ verified: isPassengerVerified, pending: !isPassengerVerified }">{{ passengerVerificationLabel }}</b>
+          </div>
+          <label class="form-row input-row">
+            <span>
+              <small>Gov ID number</small>
+              <input [(ngModel)]="profile.govIdNumber" aria-label="Government ID number" placeholder="Aadhaar, PAN, passport" />
+            </span>
+          </label>
+          <div class="verification-upload-grid">
+            <label class="form-row input-row file-row">
+              <span><small>Front photo</small><strong>{{ profile.govIdFrontUrl ? 'Front uploaded' : 'Upload front' }}</strong></span>
+              <input type="file" accept="image/*" (change)="updateGovIdPhoto($event, 'front')" aria-label="Upload Gov ID front photo" />
+              <ion-icon name="cloud-upload-outline"></ion-icon>
+            </label>
+            <label class="form-row input-row file-row">
+              <span><small>Back photo</small><strong>{{ profile.govIdBackUrl ? 'Back uploaded' : 'Upload back' }}</strong></span>
+              <input type="file" accept="image/*" (change)="updateGovIdPhoto($event, 'back')" aria-label="Upload Gov ID back photo" />
+              <ion-icon name="cloud-upload-outline"></ion-icon>
+            </label>
+          </div>
+          <div class="verification-preview-grid" *ngIf="profile.govIdFrontUrl || profile.govIdBackUrl">
+            <figure *ngIf="profile.govIdFrontUrl">
+              <img [src]="profile.govIdFrontUrl" alt="Gov ID front preview" />
+              <figcaption>Front</figcaption>
+            </figure>
+            <figure *ngIf="profile.govIdBackUrl">
+              <img [src]="profile.govIdBackUrl" alt="Gov ID back preview" />
+              <figcaption>Back</figcaption>
+            </figure>
+          </div>
+          <button class="primary-button small-cta" type="button" (click)="submitPassengerVerification()">
+            {{ isPassengerVerified ? 'Verified' : 'Submit Verification' }}
+          </button>
+        </article>
+        <article class="minimal-card">
+          <div class="section-title compact"><h2>Travel preferences</h2></div>
+          <div class="preference-grid">
+            <span>{{ profile.travelPreferences.music }}</span>
+            <span>{{ profile.travelPreferences.chat }}</span>
+            <span>{{ profile.travelPreferences.smoking }}</span>
+            <span>{{ profile.travelPreferences.pets }}</span>
+          </div>
+        </article>
+        <article class="minimal-card">
+          <div class="section-title compact inline">
+            <h2>Owner Vehicles</h2>
+            <button
+              type="button"
+              [class.disabled-option]="vehicles.length >= 2"
+              [attr.aria-disabled]="vehicles.length >= 2"
+              (click)="openVehicleAdd()"
+            >
+              Add
+            </button>
+          </div>
+          <div class="owner-vehicle-card" *ngFor="let vehicle of vehicles">
+            <div class="owner-vehicle-main">
+              <strong>{{ vehicle.make }} {{ vehicle.model }}</strong>
+              <span>{{ vehicle.color }} · {{ vehicle.seats }} seats</span>
+              <small>{{ vehicle.plateNumber }}</small>
+              <small>{{ vehicleDocumentSummary(vehicle) }}</small>
+            </div>
+            <div class="owner-vehicle-meta">
+              <b class="vehicle-status" [ngClass]="vehicleStatusClass(vehicle)">{{ vehicleDisplayStatus(vehicle) | titlecase }}</b>
+              <div class="vehicle-menu">
+                <button class="icon-button vehicle-menu-button" type="button" aria-label="Vehicle options" (click)="toggleVehicleMenu(vehicle)">
+                  <ion-icon name="ellipsis-vertical-outline"></ion-icon>
+                </button>
+                <div class="vehicle-menu-list" *ngIf="activeVehicleMenuId === vehicleKey(vehicle)">
+                  <button type="button" (click)="editVehicle(vehicle)">Edit</button>
+                  <button type="button" class="danger-link" (click)="deleteVehicle(vehicle)">Delete</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+        <article class="minimal-card">
+          <div class="section-title compact"><h2>Reviews</h2></div>
+          <p class="body-copy">Passengers mention punctual pickup, clean car, and safe driving.</p>
+        </article>
+      </section>
+
+      <section *ngSwitchCase="'/profile-dynamic-disabled'" class="screen-stack profile-screen">
+        <header class="app-header profile-header">
+          <span></span>
+          <strong>Profile</strong>
+          <button class="icon-button profile-settings-button" type="button" (click)="goTo('/settings')" aria-label="Settings">
+            <ion-icon name="settings-outline"></ion-icon>
+          </button>
+        </header>
+        <article class="minimal-card profile-hero">
+          <label class="profile-photo-control" aria-label="Upload profile photo">
+            <img *ngIf="profile.photoUrl; else profileInitialsTpl" [src]="profile.photoUrl" alt="Profile photo" />
+            <ng-template #profileInitialsTpl><span>{{ profileInitials }}</span></ng-template>
+            <input type="file" accept="image/*" (change)="updateProfilePhoto($event)" />
+          </label>
+          <div class="profile-identity">
+            <strong>{{ profile.fullName }}</strong>
+            <span>{{ profile.age }} · {{ profile.rating }} rating · {{ profile.role | titlecase }}</span>
+            <small>{{ profileBadges.join(' · ') }}</small>
+            <div class="profile-stats">
+              <b><span>{{ profile.stats.completedRides }}</span>Rides</b>
+              <b><span>{{ profile.stats.reviews }}</span>Reviews</b>
+              <b><span>{{ profile.stats.vehicles }}</span>Cars</b>
+            </div>
+          </div>
+          <button type="button" (click)="saveProfile()" [disabled]="profileSaving">{{ profileSaving ? 'Saving' : 'Save' }}</button>
+        </article>
+        <article class="minimal-card">
+          <div class="section-title compact"><h2>Personal details</h2></div>
+          <label class="form-row input-row">
+            <span><small>Display name</small><input [(ngModel)]="profile.fullName" aria-label="Display name" /></span>
+          </label>
+          <label class="form-row input-row">
+            <span><small>Age</small><input [(ngModel)]="profile.age" aria-label="Age" inputmode="numeric" /></span>
+          </label>
+          <div class="profile-detail-list">
+            <span><ion-icon name="person-circle-outline"></ion-icon>{{ profile.phone }}</span>
+            <span><ion-icon name="shield-checkmark-outline"></ion-icon>Member since {{ profile.memberSince }}</span>
+          </div>
+        </article>
+        <article class="minimal-card">
+          <div class="section-title compact"><h2>Bio</h2></div>
+          <textarea class="profile-bio-input" [(ngModel)]="profile.bio" aria-label="Profile bio"></textarea>
+        </article>
+        <article class="minimal-card">
+          <div class="section-title compact"><h2>Travel preferences</h2></div>
+          <div class="preference-grid profile-preferences">
+            <label *ngFor="let preference of profilePreferenceList">
+              <small>{{ preference.label }}</small>
+              <input [(ngModel)]="$any(profile.travelPreferences)[preference.label.toLowerCase()]" [attr.aria-label]="preference.label + ' preference'" />
+            </label>
+          </div>
+        </article>
+        <article class="minimal-card">
+          <div class="section-title compact"><h2>Vehicles</h2></div>
+          <div class="profile-vehicle-card" *ngFor="let vehicle of vehicles">
+            <div>
+              <strong>{{ vehicle.make }} {{ vehicle.model }}</strong>
+              <span>{{ vehicle.color }} - {{ vehicle.plateNumber }} - {{ vehicle.seats }} seats</span>
+              <small><ion-icon name="document-text-outline"></ion-icon>{{ vehicle.rcDocumentUrl ? 'RC book uploaded' : 'RC book required' }}</small>
+            </div>
+            <b [class.verified]="isVehicleVerified(vehicle)">
+              <ion-icon [name]="isVehicleVerified(vehicle) ? 'shield-checkmark-outline' : 'time-outline'"></ion-icon>
+              {{ vehicleDisplayStatus(vehicle) | titlecase }}
+            </b>
+            <div class="vehicle-actions">
+              <button type="button" (click)="editVehicle(vehicle)">Edit</button>
+              <button type="button" class="danger-link" (click)="deleteVehicle(vehicle)">Delete</button>
+            </div>
+          </div>
+          <button class="primary-button small-cta" type="button" (click)="goTo('/vehicles')">Add Vehicle</button>
+        </article>
+        <article class="minimal-card">
+          <div class="section-title compact"><h2>Reviews</h2></div>
+          <div class="profile-review" *ngFor="let review of profile.reviews">
+            <strong>{{ review.rating }}.0</strong>
+            <p>{{ review.comment }}</p>
+            <small>{{ review.reviewer?.full_name || 'Verified rider' }}</small>
+          </div>
+        </article>
+      </section>
+
+      <section *ngSwitchCase="'/vehicles'" class="screen-stack">
+        <header class="app-header">
+          <button class="icon-button" type="button" (click)="backFromVehicleForm()" aria-label="Back">
+            <ion-icon name="arrow-back-outline"></ion-icon>
+          </button>
+          <div>
+            <strong>Vehicles</strong>
+            <span>Driver vehicle verification</span>
+          </div>
+          <button class="icon-button" type="button" aria-label="Realtime status">
+            <ion-icon name="shield-checkmark-outline"></ion-icon>
+          </button>
+        </header>
+
+        <article class="realtime-strip">
+          <ion-icon name="notifications-outline"></ion-icon>
+          <span>{{ liveActivity }}</span>
+        </article>
+
+        <article class="minimal-card auth-card">
+          <div class="section-title">
+            <h1>{{ isEditingVehicle ? 'Edit vehicle' : 'Add vehicle' }}</h1>
+            <p>Upload vehicle documents plus front and back photos. Admin verification is required before publishing.</p>
+          </div>
+          <article class="vehicle-edit-summary" *ngIf="isEditingVehicle">
+            <div>
+              <strong>Current vehicle details</strong>
+              <span>{{ vehicleForm.make }} {{ vehicleForm.model }} - {{ vehicleForm.plateNumber }}</span>
+            </div>
+            <b class="vehicle-status" [ngClass]="vehicleStatusClass({ status: vehicleForm.status })">{{ vehicleDisplayStatus({ status: vehicleForm.status }) | titlecase }}</b>
+          </article>
+          <article class="vehicle-limit-banner" *ngIf="!isEditingVehicle">
+            <strong>{{ vehicles.length }}/2 owner vehicles added</strong>
+            <span>Only two owner vehicles can be attached to this profile.</span>
+          </article>
+          <div class="form-row input-row vehicle-lookup-row">
+            <span>
+              <small class="required-label">Make <em>*</em></small>
+              <input
+                [ngModel]="vehicleForm.make"
+                (ngModelChange)="onVehicleMakeChange($event)"
+                (focus)="openVehicleLookup('make')"
+                (blur)="closeVehicleLookup()"
+                aria-label="Vehicle make"
+                autocomplete="off"
+                placeholder="Search car make"
+              />
+            </span>
+            <ion-icon name="search-outline"></ion-icon>
+            <div class="vehicle-lookup-menu" *ngIf="activeVehicleLookup === 'make'">
+              <button type="button" *ngFor="let make of filteredVehicleMakeOptions" (mousedown)="selectVehicleMake(make); $event.preventDefault()">
+                {{ make }}
+              </button>
+              <small *ngIf="!filteredVehicleMakeOptions.length">No make found</small>
+            </div>
+          </div>
+          <div class="form-row input-row vehicle-lookup-row">
+            <span>
+              <small class="required-label">Model <em>*</em></small>
+              <input
+                [ngModel]="vehicleForm.model"
+                (ngModelChange)="onVehicleModelChange($event)"
+                (focus)="openVehicleLookup('model')"
+                (blur)="closeVehicleLookup()"
+                aria-label="Vehicle model"
+                autocomplete="off"
+                placeholder="Search model"
+              />
+            </span>
+            <ion-icon name="search-outline"></ion-icon>
+            <div class="vehicle-lookup-menu" *ngIf="activeVehicleLookup === 'model'">
+              <button
+                type="button"
+                *ngFor="let model of filteredVehicleModelOptions"
+                (mousedown)="selectVehicleModel(model); $event.preventDefault()"
+              >
+                <span>{{ model.name }}</span>
+                <small>{{ model.seats }} seats</small>
+              </button>
+              <small *ngIf="vehicleForm.make && !filteredVehicleModelOptions.length">Type model name if not listed</small>
+              <small *ngIf="!vehicleForm.make">Select or type make first</small>
+            </div>
+          </div>
+          <label class="form-row input-row">
+            <span><small>Color</small><input [(ngModel)]="vehicleForm.color" (focus)="activeVehicleLookup = null" aria-label="Vehicle color" /></span>
+          </label>
+          <label class="form-row input-row">
+            <span><small class="required-label">Plate number <em>*</em></small><input [(ngModel)]="vehicleForm.plateNumber" aria-label="Plate number" /></span>
+          </label>
+          <label class="form-row input-row">
+            <span>
+              <small class="required-label">Seats <em>*</em></small>
+              <input type="number" min="1" max="12" [(ngModel)]="vehicleForm.seats" (focus)="activeVehicleLookup = null" aria-label="Vehicle seats" />
+            </span>
+          </label>
+          <label class="form-row input-row file-row">
+            <span><small class="required-label">RC book <em>*</em></small><strong>{{ vehicleForm.rcDocumentUrl ? 'RC uploaded' : 'Upload RC book' }}</strong></span>
+            <input type="file" accept="image/*" (change)="updateVehicleDocument($event, 'rcDocumentUrl')" aria-label="Upload RC book" />
+            <ion-icon name="cloud-upload-outline"></ion-icon>
+          </label>
+          <label class="form-row input-row file-row">
+            <span><small>Insurance</small><strong>{{ vehicleForm.insuranceDocumentUrl ? 'Insurance uploaded' : 'Upload insurance' }}</strong></span>
+            <input type="file" accept="image/*" (change)="updateVehicleDocument($event, 'insuranceDocumentUrl')" aria-label="Upload insurance" />
+            <ion-icon name="cloud-upload-outline"></ion-icon>
+          </label>
+          <label class="form-row input-row file-row">
+            <span><small class="required-label">Vehicle front photo <em>*</em></small><strong>{{ vehicleForm.frontPhotoUrl ? 'Front photo uploaded' : 'Upload front side' }}</strong></span>
+            <input type="file" accept="image/*" (change)="updateVehicleDocument($event, 'frontPhotoUrl')" aria-label="Upload vehicle front side photo" />
+            <ion-icon name="cloud-upload-outline"></ion-icon>
+          </label>
+          <label class="form-row input-row file-row">
+            <span><small class="required-label">Vehicle back photo <em>*</em></small><strong>{{ vehicleForm.backPhotoUrl ? 'Back photo uploaded' : 'Upload back side' }}</strong></span>
+            <input type="file" accept="image/*" (change)="updateVehicleDocument($event, 'backPhotoUrl')" aria-label="Upload vehicle back side photo" />
+            <ion-icon name="cloud-upload-outline"></ion-icon>
+          </label>
+          <div class="vehicle-preview-grid" *ngIf="vehicleForm.rcDocumentUrl || vehicleForm.insuranceDocumentUrl || vehicleForm.frontPhotoUrl || vehicleForm.backPhotoUrl">
+            <figure *ngIf="vehicleForm.rcDocumentUrl">
+              <img [src]="vehiclePreviewUrl(vehicleForm.rcDocumentUrl, 'RC')" alt="RC book preview" />
+              <figcaption>RC book</figcaption>
+            </figure>
+            <figure *ngIf="vehicleForm.insuranceDocumentUrl">
+              <img [src]="vehiclePreviewUrl(vehicleForm.insuranceDocumentUrl, 'Insurance')" alt="Insurance preview" />
+              <figcaption>Insurance</figcaption>
+            </figure>
+            <figure *ngIf="vehicleForm.frontPhotoUrl">
+              <img [src]="vehiclePreviewUrl(vehicleForm.frontPhotoUrl, 'Front')" alt="Vehicle front photo preview" />
+              <figcaption>Front side</figcaption>
+            </figure>
+            <figure *ngIf="vehicleForm.backPhotoUrl">
+              <img [src]="vehiclePreviewUrl(vehicleForm.backPhotoUrl, 'Back')" alt="Vehicle back photo preview" />
+              <figcaption>Back side</figcaption>
+            </figure>
+          </div>
+          <div class="vehicle-form-actions">
+            <button type="button" (click)="backFromVehicleForm()">Back</button>
+            <button type="button" (click)="resetVehicleForm()">Clear</button>
+            <button
+              type="button"
+              (click)="addVehicle()"
+              [class.disabled-option]="!isEditingVehicle && vehicles.length >= 2"
+              [attr.aria-disabled]="!isEditingVehicle && vehicles.length >= 2"
+              [disabled]="vehicleSaving"
+            >
+              {{ vehicleSaving ? 'Saving' : isEditingVehicle ? 'Save Vehicle' : 'Add Vehicle' }}
+            </button>
+          </div>
+        </article>
+
+        <ng-container *ngIf="!isEditingVehicle">
+        <article class="payment-method vehicle-method" *ngFor="let vehicle of vehicles">
+          <ion-icon name="car-outline"></ion-icon>
+          <div>
+            <strong>{{ vehicle.make }} {{ vehicle.model }}</strong>
+            <span>{{ vehicle.color }} - {{ vehicle.plateNumber }} - {{ vehicle.seats }} seats</span>
+            <small>{{ vehicleDocumentSummary(vehicle) }}</small>
+          </div>
+          <b class="vehicle-status" [ngClass]="vehicleStatusClass(vehicle)">{{ vehicleDisplayStatus(vehicle) | titlecase }}</b>
+          <div class="vehicle-row-actions">
+            <button type="button" aria-label="Vehicle options" (click)="toggleVehicleMenu(vehicle)"><ion-icon name="ellipsis-vertical-outline"></ion-icon></button>
+            <div class="vehicle-menu-list" *ngIf="activeVehicleMenuId === vehicleKey(vehicle)">
+              <button type="button" (click)="editVehicle(vehicle)">Edit</button>
+              <button type="button" class="danger-link" (click)="deleteVehicle(vehicle)">Delete</button>
+            </div>
+          </div>
+        </article>
+        </ng-container>
+      </section>
+
+      <section *ngSwitchCase="'/admin'" class="screen-stack admin-screen">
+        <header class="app-header">
+          <button class="icon-button" type="button" (click)="goTo('/settings')" aria-label="Back">
+            <ion-icon name="arrow-back-outline"></ion-icon>
+          </button>
+          <div>
+            <strong>Admin CRM</strong>
+            <span>Owners, passengers, verification, tours, money</span>
+          </div>
+          <button class="icon-button" type="button" (click)="goTo('/notifications')" aria-label="Notifications">
+            <ion-icon name="notifications-outline"></ion-icon>
+          </button>
+        </header>
+
+        <section class="admin-kpi-grid admin-full-row">
+          <article class="admin-kpi" *ngFor="let kpi of adminKpis" [ngClass]="kpi.tone">
+            <small>{{ kpi.label }}</small>
+            <strong>{{ kpi.value }}</strong>
+          </article>
+        </section>
+
+        <div class="admin-tabs admin-full-row" role="tablist" aria-label="Admin CRM sections">
+          <button type="button" *ngFor="let tab of adminTabs" [class.active]="activeAdminTab === tab.key" (click)="setAdminTab(tab.key)">
+            {{ tab.label }}
+          </button>
+        </div>
+
+        <div class="admin-panel admin-full-row" [ngSwitch]="activeAdminTab">
+          <section *ngSwitchCase="'overview'" class="admin-grid">
+            <article class="minimal-card admin-summary-card">
+              <div class="section-title compact"><h2>Security queue</h2></div>
+              <div class="summary-row"><span>ID pending</span><strong>{{ pendingIdVerifications.length }}</strong></div>
+              <div class="summary-row"><span>Vehicle pending</span><strong>{{ adminPendingVehicleCount }}</strong></div>
+              <div class="summary-row"><span>Warnings issued</span><strong>{{ adminWarningsCount }}/2 policy</strong></div>
+            </article>
+            <article class="minimal-card admin-summary-card">
+              <div class="section-title compact"><h2>Operations</h2></div>
+              <div class="summary-row"><span>Passenger tours</span><strong>{{ adminPassengerTourCount }}</strong></div>
+              <div class="summary-row"><span>Vehicle tours</span><strong>{{ adminVehicleTourCount }}</strong></div>
+              <div class="summary-row"><span>Open transactions</span><strong>{{ adminTransactions.length }}</strong></div>
+            </article>
+          </section>
+
+          <section *ngSwitchCase="'owners'" class="admin-list">
+            <article class="admin-user-card" *ngFor="let owner of adminOwners">
+              <img [src]="owner.photo" [alt]="owner.name" />
+              <div>
+                <strong>{{ owner.name }}</strong>
+                <span>{{ owner.phone }} · {{ owner.rides }} rides</span>
+                <small>Balance INR {{ owner.balance | number: '1.0-0' }} · warnings {{ owner.warningCount }}/2</small>
+              </div>
+              <b [ngClass]="adminStatusClass(owner.status)">{{ owner.status | titlecase }}</b>
+              <div class="admin-actions">
+                <button type="button" (click)="viewAdminUserDetails(owner)">View Details</button>
+                <button type="button" (click)="approveAdminUser(owner)">Verify</button>
+                <button type="button" (click)="sendAdminWarning(owner)">Warn</button>
+                <button type="button" class="danger-link" (click)="blockAdminUser(owner)">Block</button>
+              </div>
+            </article>
+          </section>
+
+          <section *ngSwitchCase="'passengers'" class="admin-list">
+            <article class="admin-user-card" *ngFor="let passenger of adminPassengers">
+              <img [src]="passenger.photo" [alt]="passenger.name" />
+              <div>
+                <strong>{{ passenger.name }}</strong>
+                <span>{{ passenger.phone }} · {{ passenger.rides }} trips</span>
+                <small>Balance INR {{ passenger.balance | number: '1.0-0' }} · ID {{ passenger.verification }}</small>
+              </div>
+              <b [ngClass]="adminStatusClass(passenger.status)">{{ passenger.status | titlecase }}</b>
+              <div class="admin-actions">
+                <button type="button" (click)="viewAdminUserDetails(passenger)">View Details</button>
+                <button type="button" (click)="approveAdminUser(passenger)">Verify ID</button>
+                <button type="button" (click)="adjustAdminBalance(passenger, 100)">Credit</button>
+                <button type="button" class="danger-link" (click)="blockAdminUser(passenger)">Block</button>
+              </div>
+            </article>
+          </section>
+
+          <section *ngSwitchCase="'verify'" class="admin-list">
+            <article class="admin-case-card" *ngFor="let user of pendingIdVerifications">
+              <ion-icon name="shield-checkmark-outline"></ion-icon>
+              <div><strong>{{ user.name }}</strong><span>{{ user.role | titlecase }} ID verification pending</span></div>
+              <button type="button" (click)="approveAdminUser(user)">Approve ID</button>
+            </article>
+            <article class="admin-case-card" *ngFor="let vehicle of adminVehicleCases">
+              <ion-icon name="car-outline"></ion-icon>
+              <div>
+                <strong>{{ vehicle.vehicle }}</strong>
+                <span>{{ vehicle.owner }} · {{ vehicle.plate }} · {{ vehicle.documents }}</span>
+              </div>
+              <b [ngClass]="adminStatusClass(vehicle.status)">{{ vehicle.status | titlecase }}</b>
+              <button type="button" class="secondary-mini" (click)="viewAdminVehicleDetails(vehicle)">View</button>
+              <button type="button" (click)="approveAdminVehicle(vehicle)">Approve</button>
+              <button type="button" class="secondary-mini" (click)="requestVehicleReupload(vehicle)">Reupload</button>
+            </article>
+          </section>
+
+          <section *ngSwitchCase="'tours'" class="admin-list">
+            <article class="admin-tour-card" *ngFor="let tour of adminTours">
+              <div>
+                <small>{{ tour.type }}</small>
+                <strong>{{ tour.route }}</strong>
+                <span>{{ tour.user }} · {{ tour.vehicle }}</span>
+              </div>
+              <b [ngClass]="adminStatusClass(tour.status)">{{ tour.status }}</b>
+              <strong>INR {{ tour.amount | number: '1.0-0' }}</strong>
+              <button type="button" class="secondary-mini" (click)="deleteAdminTour(tour)">Archive</button>
+            </article>
+          </section>
+
+          <section *ngSwitchCase="'money'" class="admin-list">
+            <article class="admin-section-head">
+              <div>
+                <strong>Wallet & transactions</strong>
+                <span>Admin, owner, and passenger wallet ledger with deposits, withdrawals, refunds, failed, and canceled entries.</span>
+              </div>
+              <b>{{ adminWalletVisibleTransactions.length }} {{ adminMoneyTabLabel }} entries</b>
+            </article>
+            <section class="admin-wallet-grid">
+              <article class="admin-wallet-stat">
+                <small>{{ adminMoneyTabLabel }} net wallet</small>
+                <strong>INR {{ adminVisibleWalletTotal | number: '1.0-0' }}</strong>
+                <span>Credits minus debits</span>
+              </article>
+              <article class="admin-wallet-stat">
+                <small>Total deposits</small>
+                <strong>INR {{ adminVisibleWalletCredits | number: '1.0-0' }}</strong>
+                <span>Deposit, refund, payout credit</span>
+              </article>
+              <article class="admin-wallet-stat">
+                <small>Total withdrawals</small>
+                <strong>INR {{ adminVisibleWalletDebits | number: '1.0-0' }}</strong>
+                <span>Withdraw, canceled, debit movement</span>
+              </article>
+            </section>
+            <nav class="admin-money-tabs" aria-label="Wallet transaction tabs">
+              <button
+                type="button"
+                *ngFor="let tab of adminMoneyTabs"
+                [class.active]="adminMoneyTab === tab.key"
+                (click)="setAdminMoneyTab(tab.key)">
+                {{ tab.label }}
+              </button>
+            </nav>
+            <article class="admin-transaction-card wallet-card wallet-ledger-row" *ngFor="let transaction of pagedAdminWalletTransactions">
+              <ion-icon name="wallet-outline"></ion-icon>
+              <div class="wallet-ledger-main">
+                <strong>{{ transaction.title }}</strong>
+                <span class="wallet-ledger-meta">{{ transaction.user }} / {{ transaction.role }} / {{ transaction.method }}</span>
+                <span>{{ transaction.user }} · {{ transaction.role }}</span>
+              </div>
+              <span class="wallet-type-pill">{{ transaction.type }}</span>
+              <b [ngClass]="adminStatusClass(transaction.status)">{{ transaction.status }}</b>
+              <time class="wallet-ledger-date">{{ transaction.date }} / {{ transaction.time }}</time>
+              <time>{{ transaction.date }} · {{ transaction.time }}</time>
+              <small>{{ transaction.reference }}</small>
+              <strong class="transaction-amount" [class.credit]="transaction.amount > 0">{{ transaction.amount > 0 ? '+' : '' }}INR {{ transaction.amount | number: '1.0-0' }}</strong>
+            </article>
+            <div class="admin-pagination">
+              <button type="button" (click)="changeAdminMoneyPage(-1)">Prev</button>
+              <span>{{ adminMoneyPage }} / {{ adminMoneyTotalPages }}</span>
+              <button type="button" (click)="changeAdminMoneyPage(1)">Next</button>
+            </div>
+          </section>
+
+          <section *ngSwitchCase="'logs'" class="admin-list">
+            <article class="admin-section-head">
+              <div>
+                <strong>Security & activity logs</strong>
+                <span>Search, filter, and review passenger, owner, ride, security, and ads actions.</span>
+              </div>
+              <b>{{ filteredAdminLogs.length }} logs</b>
+            </article>
+            <article class="minimal-card admin-filter-card">
+              <label class="search-field compact-search">
+                <ion-icon name="search-outline"></ion-icon>
+                <input [(ngModel)]="adminLogSearch" placeholder="Search passenger, owner, ride, activity" aria-label="Search logs" />
+              </label>
+              <select [(ngModel)]="adminLogType" aria-label="Activity type">
+                <option>All</option>
+                <option>Passenger</option>
+                <option>Owner</option>
+                <option>Ride</option>
+                <option>Security</option>
+                <option>Ads</option>
+              </select>
+            </article>
+            <article class="admin-log-card" *ngFor="let log of pagedAdminLogs">
+              <ion-icon [name]="log.icon"></ion-icon>
+              <div>
+                <strong>{{ log.action }}</strong>
+                <span>{{ log.actor }} - {{ log.target }}</span>
+                <small>{{ log.type }} - {{ log.createdAt }}</small>
+              </div>
+              <b [ngClass]="adminStatusClass(log.priority)">{{ log.priority }}</b>
+            </article>
+            <div class="admin-pagination">
+              <button type="button" (click)="changeAdminLogPage(-1)">Prev</button>
+              <span>{{ adminLogPage }} / {{ adminLogTotalPages }}</span>
+              <button type="button" (click)="changeAdminLogPage(1)">Next</button>
+            </div>
+          </section>
+
+          <section *ngSwitchCase="'ads'" class="admin-list">
+            <article class="minimal-card admin-form-card">
+              <div class="section-title compact"><h2>Ads Management</h2><p>Banner, script, HTML, iframe, and internal promotion ads.</p></div>
+              <div class="admin-form-grid">
+                <input [(ngModel)]="adForm.name" placeholder="Ad name" aria-label="Ad name" />
+                <select [(ngModel)]="adForm.type" aria-label="Ad type"><option>Banner</option><option>JavaScript</option><option>HTML Embed</option><option>iframe</option><option>Internal Promotion</option></select>
+                <select [(ngModel)]="adForm.size" aria-label="Ad size"><option>300x250</option><option>320x50</option><option>320x100</option><option>320x180</option><option>300x600</option></select>
+                <select [(ngModel)]="adForm.placement" aria-label="Placement"><option>Search Page</option><option>Publish Ride Page</option><option>Your Rides Page</option><option>Profile Page</option><option>Dashboard</option></select>
+                <input [(ngModel)]="adForm.area" placeholder="Area/State/All India" aria-label="Area" />
+                <input [(ngModel)]="adForm.redirectUrl" placeholder="Redirect URL or script label" aria-label="Redirect URL" />
+              </div>
+              <div class="dual-actions">
+                <button type="button" (click)="createAdminAd()">Create Ad</button>
+                <button type="button" (click)="bulkTogglePartnerAds()">Toggle Partner Ads</button>
+              </div>
+            </article>
+            <article class="admin-ad-card" *ngFor="let ad of adminAds">
+              <div class="ad-preview-box" [ngClass]="ad.type.toLowerCase().replace(' ', '-')">{{ ad.size }}</div>
+              <div>
+                <strong>{{ ad.name }}</strong>
+                <span>{{ ad.type }} - {{ ad.placement }} - {{ ad.area }}</span>
+                <small>{{ ad.startDate }} to {{ ad.endDate }} - {{ ad.impressions }} views - {{ ad.clicks }} clicks - CTR {{ ad.ctr }}%</small>
+              </div>
+              <b [ngClass]="adminStatusClass(ad.status)">{{ ad.status }}</b>
+              <div class="admin-actions inline-actions">
+                <button type="button" (click)="toggleAdminAd(ad)">{{ ad.status === 'active' ? 'Disable' : 'Enable' }}</button>
+                <button type="button" (click)="renewAdminAd(ad)">Renew</button>
+                <button type="button" class="danger-link" (click)="deleteAdminAd(ad)">Delete</button>
+              </div>
+            </article>
+          </section>
+
+          <section *ngSwitchCase="'partners'" class="admin-list">
+            <article class="admin-section-head">
+              <div>
+                <strong>Ads partners</strong>
+                <span>Paid, free, script, and internal promotion partner CRM.</span>
+              </div>
+              <b>{{ adPartners.length }} partners</b>
+            </article>
+            <section class="admin-wallet-grid partner-summary-grid">
+              <article class="admin-wallet-stat">
+                <small>Active partners</small>
+                <strong>{{ activeAdPartners.length }}</strong>
+                <span>Ready for placement</span>
+              </article>
+              <article class="admin-wallet-stat">
+                <small>High priority</small>
+                <strong>{{ highPriorityPartners.length }}</strong>
+                <span>Better visibility</span>
+              </article>
+            </section>
+            <article class="admin-partner-card" *ngFor="let partner of adPartners">
+              <ion-icon name="person-circle-outline"></ion-icon>
+              <div>
+                <strong>{{ partner.partnerName }}</strong>
+                <span>{{ partner.companyName }}</span>
+                <div class="admin-mini-grid">
+                  <small>{{ partner.type }}</small>
+                  <small>{{ partner.priority }} priority</small>
+                  <small>{{ partner.contactPerson }}</small>
+                  <small>{{ partner.mobile }}</small>
+                  <small>{{ partner.email }}</small>
+                  <small>GST {{ partner.gstNumber }}</small>
+                </div>
+                <small>{{ partner.address }} - Agreement {{ partner.startDate }} to {{ partner.endDate }}</small>
+              </div>
+              <b [ngClass]="adminStatusClass(partner.status)">{{ partner.status }}</b>
+            </article>
+          </section>
+
+          <section *ngSwitchCase="'billing'" class="admin-list">
+            <article class="admin-section-head">
+              <div>
+                <strong>Billing & invoices</strong>
+                <span>Ad invoice totals, GST, payment mode, and payment status.</span>
+              </div>
+              <b>INR {{ pendingBillingAmount | number: '1.0-0' }} pending</b>
+            </article>
+            <section class="admin-wallet-grid billing-summary-grid">
+              <article class="admin-wallet-stat">
+                <small>Paid</small>
+                <strong>INR {{ paidBillingAmount | number: '1.0-0' }}</strong>
+                <span>Settled invoices</span>
+              </article>
+              <article class="admin-wallet-stat">
+                <small>Pending</small>
+                <strong>INR {{ pendingBillingAmount | number: '1.0-0' }}</strong>
+                <span>Awaiting payment</span>
+              </article>
+              <article class="admin-wallet-stat">
+                <small>Total GST</small>
+                <strong>INR {{ totalBillingGst | number: '1.0-0' }}</strong>
+                <span>Tax collected</span>
+              </article>
+            </section>
+            <article class="admin-invoice-card" *ngFor="let invoice of adInvoices">
+              <ion-icon name="card-outline"></ion-icon>
+              <div>
+                <strong>{{ invoice.invoiceNumber }}</strong>
+                <span>{{ invoice.partnerName }} - {{ invoice.adName }}</span>
+                <div class="admin-mini-grid">
+                  <small>{{ invoice.placement }}</small>
+                  <small>{{ invoice.runningDays }} days</small>
+                  <small>Base INR {{ invoice.baseAmount | number: '1.0-0' }}</small>
+                  <small>GST INR {{ invoice.gst | number: '1.0-0' }}</small>
+                  <small>{{ invoice.paymentMode }}</small>
+                  <small>{{ invoice.transactionRef }}</small>
+                </div>
+              </div>
+              <b [ngClass]="adminStatusClass(invoice.paymentStatus)">{{ invoice.paymentStatus }}</b>
+              <strong>INR {{ invoice.finalAmount | number: '1.0-0' }}</strong>
+            </article>
+          </section>
+
+          <section *ngSwitchCase="'analytics'" class="admin-list">
+            <article class="admin-section-head">
+              <div>
+                <strong>Analytics & reports</strong>
+                <span>Revenue, active ads, ad history, and export-ready report data.</span>
+              </div>
+              <b>{{ adminAdHistory.length }} history</b>
+            </article>
+            <section class="admin-kpi-grid">
+              <article class="admin-kpi"><small>Total revenue</small><strong>INR {{ adminAdRevenue | number: '1.0-0' }}</strong></article>
+              <article class="admin-kpi"><small>Active ads</small><strong>{{ activeAdminAds.length }}</strong></article>
+              <article class="admin-kpi"><small>Expired ads</small><strong>{{ expiredAdminAds.length }}</strong></article>
+              <article class="admin-kpi"><small>Monthly revenue</small><strong>INR {{ monthlyAdRevenue | number: '1.0-0' }}</strong></article>
+            </section>
+            <article class="admin-analytics-chart">
+              <div>
+                <span>Search Page</span>
+                <b style="--bar: 82%">82%</b>
+              </div>
+              <div>
+                <span>Dashboard</span>
+                <b style="--bar: 54%">54%</b>
+              </div>
+              <div>
+                <span>Profile Page</span>
+                <b style="--bar: 38%">38%</b>
+              </div>
+            </article>
+            <article class="admin-report-card">
+              <strong>Downloadable Excel report ready</strong>
+              <span>Ad ID, partner, contact, size, placement, area, dates, running days, impressions, clicks, CTR, billing, status, created/updated dates.</span>
+              <button type="button" (click)="exportAdsReport()">Export CSV</button>
+            </article>
+            <article class="admin-log-card" *ngFor="let history of adminAdHistory">
+              <ion-icon name="time-outline"></ion-icon>
+              <div><strong>{{ history.action }}</strong><span>{{ history.adName }} - {{ history.details }}</span><small>{{ history.createdAt }}</small></div>
+              <b>{{ history.adminUser }}</b>
+            </article>
+          </section>
+        </div>
+      </section>
+
+      <section *ngSwitchCase="'/settings'" class="screen-stack">
+        <header class="app-header centered">
+          <span></span>
+          <strong>Account settings</strong>
+          <span></span>
+        </header>
+        <article class="settings-list account-settings-list">
+          <button class="settings-row" type="button" *ngFor="let section of accountSections" (click)="section.title === 'Dark mode' ? toggleDarkMode() : goTo(section.route)">
+            <span class="settings-icon"><ion-icon [name]="section.icon"></ion-icon></span>
+            <span class="settings-label">{{ section.title }}<small *ngIf="section.title === 'Dark mode'">{{ isDark ? 'Enabled' : 'Disabled' }}</small></span>
+            <ion-icon class="settings-chevron" name="chevron-forward-outline"></ion-icon>
+          </button>
+        </article>
+        <article class="settings-list danger-zone">
+          <button class="settings-row" type="button" (click)="logout()">
+            <span class="settings-icon"><ion-icon name="arrow-back-outline"></ion-icon></span>
+            <span class="settings-label">Logout</span>
+            <ion-icon class="settings-chevron" name="chevron-forward-outline"></ion-icon>
+          </button>
+          <button class="settings-row" type="button">
+            <span class="settings-icon"><ion-icon name="close-circle-outline"></ion-icon></span>
+            <span class="settings-label">Close account</span>
+            <ion-icon class="settings-chevron" name="chevron-forward-outline"></ion-icon>
+          </button>
+        </article>
+      </section>
+
+      <section *ngSwitchCase="'/payments'" class="screen-stack">
+        <header class="app-header centered">
+          <span></span>
+          <strong>Payments</strong>
+          <span></span>
+        </header>
+        <article class="payment-card primary-wallet">
+          <small>Ride wallet</small>
+          <strong>INR {{ walletBalance | number: '1.0-0' }}</strong>
+          <span>Refunds and credits available instantly.</span>
+        </article>
+        <article class="payment-method" *ngFor="let payment of payments">
+          <ion-icon name="card-outline"></ion-icon>
+          <div><strong>{{ payment.brand }}</strong><span>{{ payment.label }} · {{ payment.last4 }}</span></div>
+          <b>{{ payment.status }}</b>
+        </article>
+        <button class="primary-button" type="button">Add payment method</button>
+        <article class="minimal-card">
+          <div class="section-title compact"><h2>Transaction history</h2></div>
+          <div class="summary-row" *ngFor="let transaction of transactions">
+            <span>{{ transaction.title }}<small>{{ transaction.date }} · {{ transaction.status }}</small></span>
+            <strong>{{ transaction.amount }}</strong>
+          </div>
+        </article>
+      </section>
+
+      <section *ngSwitchCase="'/notifications'" class="screen-stack">
+        <header class="app-header centered">
+          <span></span>
+          <strong>Notifications</strong>
+          <span></span>
+        </header>
+        <article
+          class="notification-item"
+          *ngFor="let item of notificationCenter"
+          [class.unread]="item.unread"
+          [class.actionable]="item.bookingDetails || item.action === 'same_route'"
+          role="button"
+          tabindex="0"
+          (click)="openNotification(item)"
+          (keydown.enter)="openNotification(item)"
+        >
+          <ion-icon [name]="item.icon"></ion-icon>
+          <div>
+            <small>{{ item.type }}</small>
+            <strong>{{ item.title }}</strong>
+            <span>{{ item.message }}</span>
+          </div>
+          <time>{{ item.time }}</time>
+        </article>
+      </section>
+    </ng-container>
+
+    <div class="success-overlay" *ngIf="showPublishSuccess">
+      <article class="success-dialog">
+        <ion-icon name="checkmark-circle-outline"></ion-icon>
+        <h2>Ride Published Successfully</h2>
+        <p>Your ride is now visible to passengers on this route.</p>
+        <button type="button" (click)="closePublishSuccess()">Done</button>
+      </article>
+    </div>
+
+    <div class="success-overlay" *ngIf="selectedBookingRequest">
+      <article class="success-dialog booking-request-dialog">
+        <img [src]="selectedBookingRequest.passengerPhoto" [alt]="selectedBookingRequest.passengerName" />
+        <h2>{{ selectedBookingRequest.passengerName }}</h2>
+        <p>
+          <ion-icon name="shield-checkmark-outline"></ion-icon>
+          {{ selectedBookingRequest.verified ? 'Verified passenger' : 'Verification pending' }}
+        </p>
+        <div class="booking-detail-list">
+          <span><small>Route</small><strong>{{ selectedBookingRequest.route }}</strong></span>
+          <span><small>From</small><strong>{{ selectedBookingRequest.from }}</strong></span>
+          <span><small>To</small><strong>{{ selectedBookingRequest.to }}</strong></span>
+          <span><small>Vehicle</small><strong>{{ selectedBookingRequest.vehicle }}</strong></span>
+          <span><small>Contact</small><strong>{{ selectedBookingRequest.passengerPhone }}</strong></span>
+          <span><small>Gov ID</small><strong>{{ selectedBookingRequest.passengerGovIdNumber }}</strong></span>
+        </div>
+        <button type="button" (click)="closeBookingRequestPopup()">Close</button>
+      </article>
+    </div>
+
+    <div class="success-overlay" *ngIf="ownerProfileOpen">
+      <article class="success-dialog booking-request-dialog owner-profile-dialog">
+        <img [src]="driverPublicProfile.photo" [alt]="driverPublicProfile.name" />
+        <h2>{{ driverPublicProfile.name }}</h2>
+        <p>
+          <ion-icon name="shield-checkmark-outline"></ion-icon>
+          {{ driverPublicProfile.verification }}
+        </p>
+        <p>{{ driverPublicProfile.bio }}</p>
+        <div class="booking-detail-list">
+          <span><small>Rating</small><strong>{{ driverPublicProfile.rating }} · {{ driverPublicProfile.trips }} trips</strong></span>
+          <span><small>Contact</small><strong>{{ driverPublicProfile.phone }}</strong></span>
+          <span><small>Email</small><strong>{{ driverPublicProfile.email }}</strong></span>
+          <span><small>Vehicle</small><strong>{{ driverPublicProfile.vehicle }}</strong></span>
+          <span><small>Car details</small><strong>{{ driverPublicProfile.vehicleMeta }}</strong></span>
+          <span><small>Experience</small><strong>{{ driverPublicProfile.yearsOnRide }}</strong></span>
+        </div>
+        <div class="profile-chip-row">
+          <span *ngFor="let mood of driverPublicProfile.moods">{{ mood }}</span>
+        </div>
+        <button type="button" (click)="closeOwnerProfile()">Close</button>
+      </article>
+    </div>
+
+    <div class="success-overlay" *ngIf="selectedPassengerProfile">
+      <article class="success-dialog passenger-profile-dialog">
+        <img [src]="selectedPassengerProfile.photo" [alt]="selectedPassengerProfile.name" />
+        <h2>{{ selectedPassengerProfile.name }}</h2>
+        <p>
+          <ion-icon name="shield-checkmark-outline"></ion-icon>
+          {{ selectedPassengerProfile.verified ? 'Verified passenger' : 'Verification pending' }}
+        </p>
+        <div class="profile-chip-row single-row">
+          <span *ngFor="let mood of selectedPassengerProfile.moods">{{ mood }}</span>
+        </div>
+        <button type="button" (click)="closePassengerProfile()">Close</button>
+      </article>
+    </div>
+
+    <div class="success-overlay" *ngIf="selectedAdminUser">
+      <article class="success-dialog admin-user-detail-dialog">
+        <header class="admin-detail-head">
+          <img [src]="selectedAdminUser.photo" [alt]="selectedAdminUser.name" />
+          <div>
+            <h2>{{ selectedAdminUser.name }}</h2>
+            <p>{{ selectedAdminUser.role | titlecase }} - {{ selectedAdminUser.phone }}</p>
+            <small>{{ selectedAdminUser.email || 'No email added' }}</small>
+          </div>
+          <b [ngClass]="adminStatusClass(selectedAdminUser.verification)">{{ selectedAdminUser.verification | titlecase }}</b>
+        </header>
+
+        <section class="admin-detail-grid">
+          <span><small>Trips</small><strong>{{ selectedAdminUser.rides }}</strong></span>
+          <span><small>Wallet</small><strong>INR {{ selectedAdminUser.balance | number: '1.0-0' }}</strong></span>
+          <span><small>Warnings</small><strong>{{ selectedAdminUser.warningCount }}/2</strong></span>
+          <span><small>Gov ID</small><strong>{{ selectedAdminUser.govIdNumber || 'Not added' }}</strong></span>
+        </section>
+
+        <section class="admin-documents-panel">
+          <div class="section-title compact">
+            <h2>{{ selectedAdminUser.role === 'owner' ? 'Owner / vehicle documents' : 'Passenger ID documents' }}</h2>
+            <p>Review uploaded proof before approving or requesting reupload.</p>
+          </div>
+          <article class="admin-document-row document-preview-row" *ngFor="let doc of selectedAdminUserDocuments">
+            <button class="document-thumb" type="button" (click)="openAdminDocumentPreview(doc)" aria-label="Preview document">
+              <img [src]="adminDocumentPreviewUrl(doc)" [alt]="doc.label" />
+            </button>
+            <div>
+              <strong>{{ doc.label }}</strong>
+              <span>{{ doc.value }}</span>
+            </div>
+            <b [ngClass]="adminStatusClass(doc.status)">{{ doc.status | titlecase }}</b>
+            <button class="icon-button document-eye-button" type="button" (click)="openAdminDocumentPreview(doc)" aria-label="View document">
+              <ion-icon name="eye-outline"></ion-icon>
+            </button>
+          </article>
+        </section>
+
+        <section class="admin-documents-panel">
+          <div class="section-title compact">
+            <h2>{{ selectedAdminUser.name }} transactions</h2>
+            <p>Ride, payout, refund, and wallet records for this user only.</p>
+          </div>
+          <article class="admin-document-row" *ngFor="let transaction of selectedAdminUserTransactions">
+            <ion-icon name="wallet-outline"></ion-icon>
+            <div>
+              <strong>{{ transaction.title }}</strong>
+              <span>{{ transaction.status }} - {{ transaction.role }}</span>
+            </div>
+            <b [class.credit]="transaction.amount > 0">{{ transaction.amount > 0 ? '+' : '' }}INR {{ transaction.amount | number: '1.0-0' }}</b>
+          </article>
+        </section>
+
+        <div class="admin-detail-actions">
+          <button type="button" (click)="approveAdminUser(selectedAdminUser)">Approve</button>
+          <button type="button" class="secondary-mini" (click)="requestAdminUserReupload(selectedAdminUser)">Reupload</button>
+          <button type="button" class="danger-link" (click)="rejectAdminUser(selectedAdminUser)">Reject</button>
+          <button type="button" class="secondary-mini" (click)="closeAdminUserDetails()">Close</button>
+        </div>
+      </article>
+    </div>
+
+    <div class="success-overlay" *ngIf="selectedAdminVehicle">
+      <article class="success-dialog admin-user-detail-dialog">
+        <header class="admin-detail-head">
+          <ion-icon name="car-outline"></ion-icon>
+          <div>
+            <h2>{{ selectedAdminVehicle.vehicle }}</h2>
+            <p>{{ selectedAdminVehicle.owner }} - {{ selectedAdminVehicle.plate }}</p>
+            <small>{{ selectedAdminVehicle.color || 'Color pending' }} - {{ selectedAdminVehicle.seats || 4 }} seats</small>
+          </div>
+          <b [ngClass]="adminStatusClass(selectedAdminVehicle.status)">{{ selectedAdminVehicle.status | titlecase }}</b>
+        </header>
+
+        <section class="admin-detail-grid">
+          <span><small>Owner</small><strong>{{ selectedAdminVehicle.owner }}</strong></span>
+          <span><small>Plate</small><strong>{{ selectedAdminVehicle.plate }}</strong></span>
+          <span><small>Vehicle</small><strong>{{ selectedAdminVehicle.vehicle }}</strong></span>
+          <span><small>Documents</small><strong>{{ selectedAdminVehicle.documents }}</strong></span>
+        </section>
+
+        <section class="admin-documents-panel">
+          <div class="section-title compact">
+            <h2>Vehicle documents</h2>
+            <p>Tap the square preview or eye icon to view each uploaded document.</p>
+          </div>
+          <article class="admin-document-row document-preview-row" *ngFor="let doc of selectedAdminVehicleDocuments">
+            <button class="document-thumb" type="button" (click)="openAdminDocumentPreview(doc)" aria-label="Preview vehicle document">
+              <img [src]="adminDocumentPreviewUrl(doc)" [alt]="doc.label" />
+            </button>
+            <div>
+              <strong>{{ doc.label }}</strong>
+              <span>{{ doc.value }}</span>
+            </div>
+            <b [ngClass]="adminStatusClass(doc.status)">{{ doc.status | titlecase }}</b>
+            <button class="icon-button document-eye-button" type="button" (click)="openAdminDocumentPreview(doc)" aria-label="View vehicle document">
+              <ion-icon name="eye-outline"></ion-icon>
+            </button>
+          </article>
+        </section>
+
+        <div class="admin-detail-actions">
+          <button type="button" (click)="approveAdminVehicle(selectedAdminVehicle)">Approve</button>
+          <button type="button" class="secondary-mini" (click)="requestVehicleReupload(selectedAdminVehicle)">Reupload</button>
+          <button type="button" class="secondary-mini" (click)="closeAdminVehicleDetails()">Close</button>
+        </div>
+      </article>
+    </div>
+
+    <div class="success-overlay" *ngIf="selectedAdminDocument">
+      <article class="success-dialog document-preview-dialog">
+        <header class="section-title compact">
+          <h2>{{ selectedAdminDocument.label }}</h2>
+          <p>{{ selectedAdminDocument.value }}</p>
+        </header>
+        <img [src]="adminDocumentPreviewUrl(selectedAdminDocument)" [alt]="selectedAdminDocument.label" />
+        <b [ngClass]="adminStatusClass(selectedAdminDocument.status)">{{ selectedAdminDocument.status | titlecase }}</b>
+        <button type="button" (click)="closeAdminDocumentPreview()">Close</button>
+      </article>
+    </div>
+  </main>
+</ion-content>
+
+<ng-template #publishHeader>
+  <header class="app-header centered">
+    <button class="icon-button" type="button" (click)="previousPublishStep()" aria-label="Back">
+      <ion-icon name="arrow-back-outline"></ion-icon>
+    </button>
+    <div>
+      <strong>Publish ride</strong>
+      <span>Step {{ publishFlowStepFromRoute }} of 4</span>
+    </div>
+    <button class="icon-button" type="button" aria-label="Options">
+      <ion-icon name="options-outline"></ion-icon>
+    </button>
+  </header>
+
+  <section class="progress-card">
+    <div class="progress-label">
+      <span>{{ publishFlowStepFromRoute === 2 ? 'Ride details' : publishFlowStepFromRoute === 3 ? 'Travel preferences' : 'Confirm ride' }}</span>
+      <strong>{{ publishFlowStepFromRoute }}/4</strong>
+    </div>
+    <div class="progress-track">
+      <span [style.width.%]="publishFlowStepFromRoute * 25"></span>
+    </div>
+  </section>
+
+  <section class="route-card">
+    <small>Route</small>
+    <strong>{{ publishRideForm.departure }} to {{ publishRideForm.destination }}</strong>
+    <span>Today · 08:30 AM · via {{ stops[0] }}</span>
+  </section>
+</ng-template>
+
+<ng-template #publishStepTwo>
+  <ng-container *ngTemplateOutlet="publishHeader"></ng-container>
+  <article class="minimal-card">
+    <div class="section-title">
+      <h1>Ride publishing form</h1>
+      <p>Set capacity and booking rules.</p>
+    </div>
+    <div class="form-row seat-row">
+      <div>
+        <small>Number of seats</small>
+        <strong>{{ rideSetup.seats }}</strong>
+      </div>
+      <div class="stepper">
+        <button type="button" (click)="decreaseSeats()" aria-label="Decrease seats"><ion-icon name="remove-outline"></ion-icon></button>
+        <button type="button" (click)="increaseSeats()" aria-label="Increase seats"><ion-icon name="add-outline"></ion-icon></button>
+      </div>
+    </div>
+    <label class="form-row input-row">
+      <span>
+        <small>Price per seat</small>
+        <input type="number" [(ngModel)]="rideSetup.pricePerSeat" aria-label="Price per seat" />
+      </span>
+      <strong>INR</strong>
+    </label>
+    <div class="toggle-row">
+      <div><strong>Luggage allowed</strong><span>Let passengers bring a small bag.</span></div>
+      <ion-toggle [(ngModel)]="rideSetup.luggageAllowed" aria-label="Luggage allowed"></ion-toggle>
+    </div>
+    <div class="toggle-row">
+      <div><strong>Instant booking</strong><span>Passengers can book without approval.</span></div>
+      <ion-toggle [(ngModel)]="rideSetup.instantBooking" aria-label="Instant booking"></ion-toggle>
+    </div>
+  </article>
+</ng-template>
+
+<ng-template #publishStepThree>
+  <ng-container *ngTemplateOutlet="publishHeader"></ng-container>
+  <article class="minimal-card">
+    <div class="section-title">
+      <h1>Travel preferences</h1>
+      <p>Help passengers know your ride style.</p>
+    </div>
+    <div class="toggle-row">
+      <div><strong>Smoking allowed</strong><span>Allow smoking during stops or ride.</span></div>
+      <ion-toggle [(ngModel)]="travelPreferences.smokingAllowed" aria-label="Smoking allowed"></ion-toggle>
+    </div>
+    <div class="toggle-row">
+      <div><strong>Pets allowed</strong><span>Accept passengers travelling with pets.</span></div>
+      <ion-toggle [(ngModel)]="travelPreferences.petsAllowed" aria-label="Pets allowed"></ion-toggle>
+    </div>
+  </article>
+  <article class="minimal-card">
+    <div class="section-title compact"><h2>Music preference</h2></div>
+    <div class="chip-group">
+      <button type="button" *ngFor="let option of musicOptions" [class.active]="travelPreferences.music === option" (click)="selectMusic(option)">
+        {{ option }}
+      </button>
+    </div>
+  </article>
+  <article class="minimal-card">
+    <div class="section-title compact"><h2>Chat preference</h2></div>
+    <div class="chip-group">
+      <button type="button" *ngFor="let option of chatOptions" [class.active]="travelPreferences.chat === option" (click)="selectChat(option)">
+        {{ option }}
+      </button>
+    </div>
+  </article>
+</ng-template>
+
+<ng-template #publishStepFour>
+  <ng-container *ngTemplateOutlet="publishHeader"></ng-container>
+  <article class="minimal-card confirmation-card">
+    <div class="section-title">
+      <h1>Ride confirmation</h1>
+      <p>Review before publishing.</p>
+    </div>
+    <div class="summary-row"><span>Route</span><strong>{{ publishRideForm.departure }} to {{ publishRideForm.destination }}</strong></div>
+    <div class="summary-row"><span>Time</span><strong>Today · 08:30 AM</strong></div>
+    <div class="summary-row"><span>Seats</span><strong>{{ rideSetup.seats }} available</strong></div>
+    <div class="summary-row"><span>Price</span><strong>INR {{ rideSetup.pricePerSeat }} per seat</strong></div>
+    <div class="summary-row"><span>Preferences</span><strong>{{ travelPreferences.music }} · {{ travelPreferences.chat }}</strong></div>
+    <div class="summary-row">
+      <span>Rules</span>
+      <strong>{{ travelPreferences.smokingAllowed ? 'Smoking ok' : 'No smoking' }}, {{ travelPreferences.petsAllowed ? 'pets ok' : 'no pets' }}</strong>
+    </div>
+  </article>
+</ng-template>
+
+<ion-footer class="flow-footer" *ngIf="activeNav === 'publish' && currentRoute !== '/login'">
+  <button type="button" *ngIf="publishFlowStepFromRoute < 4" (click)="continuePublish()">Continue</button>
+  <button type="button" *ngIf="publishFlowStepFromRoute === 4" (click)="publishRideNow()">Publish Ride</button>
+</ion-footer>
+
+<ion-footer class="app-tabbar" *ngIf="currentRoute !== '/login'">
+  <button type="button" [class.active]="activeNav === 'search'" (click)="selectTab('search')">
+    <ion-icon name="search-outline"></ion-icon>
+    <span>Search</span>
+  </button>
+  <button type="button" [class.active]="activeNav === 'publish'" (click)="selectTab('publish')">
+    <ion-icon name="add-circle-outline"></ion-icon>
+    <span>Publish</span>
+  </button>
+  <button type="button" [class.active]="activeNav === 'your-rides'" (click)="selectTab('yourRides')">
+    <ion-icon name="car-outline"></ion-icon>
+    <span>Your Rides</span>
+  </button>
+  <button type="button" [class.active]="activeNav === 'inbox'" (click)="selectTab('inbox')">
+    <ion-icon name="chatbubble-ellipses-outline"></ion-icon>
+    <b class="nav-badge message-badge" *ngIf="unreadMessageCount">{{ unreadMessageCount }}</b>
+    <span>Inbox</span>
+  </button>
+  <button type="button" [class.active]="activeNav === 'profile'" (click)="selectTab('profile')">
+    <ion-icon name="person-circle-outline"></ion-icon>
+    <span>Profile</span>
+  </button>
+</ion-footer>

@@ -1,0 +1,25 @@
+CREATE DATABASE IF NOT EXISTS fastforward;
+USE fastforward;
+
+CREATE TABLE IF NOT EXISTS device_tokens (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  token VARCHAR(512) NOT NULL,
+  platform ENUM('android', 'ios', 'web') NOT NULL,
+  device_name VARCHAR(120) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_device_token (token)
+);
+
+CREATE TABLE IF NOT EXISTS notification_logs (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  token VARCHAR(512) NOT NULL,
+  platform ENUM('android', 'ios', 'web') NOT NULL,
+  title VARCHAR(160) NOT NULL,
+  body VARCHAR(500) NOT NULL,
+  provider VARCHAR(40) NOT NULL,
+  provider_response JSON NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id)
+);
