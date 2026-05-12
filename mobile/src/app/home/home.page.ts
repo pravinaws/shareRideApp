@@ -303,6 +303,8 @@ export class HomePage {
   currentRouteValue = '/login';
   otpSent = false;
   otpSending = false;
+  otpResendSeconds = 0;
+  private otpResendTimer?: number;
   loginSubmitting = false;
   loginForm = {
     fullName: 'Harshala',
@@ -1785,6 +1787,7 @@ export class HomePage {
     this.loginForm.phone = String(value || '').replace(/\D/g, '').slice(0, 10);
     this.otpSent = false;
     this.loginForm.otp = '';
+    this.stopOtpResendTimer();
   }
 
   private isLoginPhoneValid() {
@@ -1800,6 +1803,11 @@ export class HomePage {
   }
 
   sendLoginOtp() {
+    if (this.otpResendSeconds > 0) {
+      this.presentToast(`Resend OTP in ${this.otpResendSeconds}s`);
+      return;
+    }
+
     if (!this.isLoginPhoneValid()) {
       this.presentToast('Enter 10 digit numeric mobile number');
       return;
@@ -1811,6 +1819,7 @@ export class HomePage {
       next: (response) => {
         this.otpSent = true;
         this.otpSending = false;
+        this.startOtpResendTimer();
         if (response.demoOtp) {
           this.liveActivity = `Test OTP sent: ${response.demoOtp}`;
           this.presentToast(`Test OTP sent: ${response.demoOtp}`);
@@ -1826,6 +1835,39 @@ export class HomePage {
         this.presentToast(this.liveActivity);
       },
     });
+  }
+
+  showSignupForm() {
+    this.authMode = 'signup';
+    this.otpSent = false;
+    this.loginForm.otp = '';
+    this.stopOtpResendTimer();
+  }
+
+  showLoginForm() {
+    this.authMode = 'login';
+    this.otpSent = false;
+    this.loginForm.otp = '';
+    this.stopOtpResendTimer();
+  }
+
+  private startOtpResendTimer() {
+    this.stopOtpResendTimer();
+    this.otpResendSeconds = 45;
+    this.otpResendTimer = window.setInterval(() => {
+      this.otpResendSeconds = Math.max(0, this.otpResendSeconds - 1);
+      if (this.otpResendSeconds === 0) {
+        this.stopOtpResendTimer();
+      }
+    }, 1000);
+  }
+
+  private stopOtpResendTimer() {
+    if (this.otpResendTimer) {
+      window.clearInterval(this.otpResendTimer);
+      this.otpResendTimer = undefined;
+    }
+    this.otpResendSeconds = 0;
   }
 
   login() {
@@ -1845,6 +1887,7 @@ export class HomePage {
       next: () => {
         this.loginSubmitting = false;
         this.isLoggedIn = true;
+        this.stopOtpResendTimer();
         this.liveActivity = 'WhatsApp OTP verified · realtime session started';
         this.realtime.connect();
         this.presentToast(this.authMode === 'signup' ? 'Signup successful' : 'Login successful');

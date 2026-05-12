@@ -366,14 +366,18 @@ ion-icon {
   gap: 10px;
 }
 
-.auth-tabs {
-  margin-bottom: 2px;
-}
-
 .auth-role-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: 2px;
+}
+
+.phone-row {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.phone-input-wrap {
+  min-width: 0;
 }
 
 .secondary-button {
@@ -654,9 +658,34 @@ ion-icon {
 }
 
 .country-code {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  color: #001F3F;
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 750;
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.link-button {
+  background: transparent;
   color: #001F3F;
   font-size: 14px;
   font-weight: 750;
+  min-height: 34px;
+  text-align: center;
+}
+
+.link-button:disabled {
+  color: #64748b;
+}
+
+.signup-link,
+.resend-link {
+  justify-self: center;
 }
 
 .primary-button {

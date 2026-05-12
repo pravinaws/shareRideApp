@@ -16,10 +16,6 @@
             <h1>{{ authMode === 'signup' ? 'Create account' : 'Mobile login' }}</h1>
             <p>Use WhatsApp OTP verification to continue.</p>
           </div>
-          <div class="segmented-tabs auth-tabs">
-            <button type="button" [class.active]="authMode === 'login'" (click)="authMode = 'login'">Login</button>
-            <button type="button" [class.active]="authMode === 'signup'" (click)="authMode = 'signup'">Signup</button>
-          </div>
           <label class="form-row input-row" *ngIf="authMode === 'signup'">
             <span>
               <small>Full name</small>
@@ -27,8 +23,9 @@
             </span>
             <ion-icon name="person-circle-outline"></ion-icon>
           </label>
-          <label class="form-row input-row">
-            <span>
+          <label class="form-row input-row phone-row" *ngIf="!otpSent">
+            <strong class="country-code">+91</strong>
+            <span class="phone-input-wrap">
               <small>WhatsApp mobile number</small>
               <input
                 [ngModel]="loginForm.phone"
@@ -41,7 +38,6 @@
                 placeholder="10 digit number"
               />
             </span>
-            <strong class="country-code">+91</strong>
           </label>
           <div class="chip-group auth-role-row" *ngIf="authMode === 'signup'">
             <button type="button" [class.active]="loginForm.role === 'passenger'" (click)="loginForm.role = 'passenger'">
@@ -51,18 +47,40 @@
               Driver
             </button>
           </div>
-          <button class="secondary-button" type="button" (click)="sendLoginOtp()" [disabled]="otpSending">
-            {{ otpSending ? 'Sending...' : otpSent ? 'Resend WhatsApp OTP' : 'Send WhatsApp OTP' }}
+          <button class="secondary-button" type="button" (click)="sendLoginOtp()" [disabled]="otpSending" *ngIf="!otpSent">
+            {{ otpSending ? 'Sending...' : 'Send OTP' }}
           </button>
-          <label class="form-row input-row">
+          <label class="form-row input-row" *ngIf="otpSent">
             <span>
               <small>OTP</small>
-              <input [(ngModel)]="loginForm.otp" aria-label="OTP" autocomplete="one-time-code" inputmode="numeric" maxlength="10" />
+              <input
+                [(ngModel)]="loginForm.otp"
+                aria-label="OTP"
+                autocomplete="one-time-code"
+                inputmode="numeric"
+                maxlength="10"
+                placeholder="Enter WhatsApp OTP"
+              />
             </span>
             <ion-icon name="shield-checkmark-outline"></ion-icon>
           </label>
-          <button class="primary-button" type="button" (click)="login()" [disabled]="loginSubmitting">
+          <button class="primary-button" type="button" (click)="login()" [disabled]="loginSubmitting" *ngIf="otpSent">
             {{ loginSubmitting ? 'Verifying...' : authMode === 'signup' ? 'Verify & Signup' : 'Verify & Login' }}
+          </button>
+          <button
+            class="link-button resend-link"
+            type="button"
+            (click)="sendLoginOtp()"
+            [disabled]="otpSending || otpResendSeconds > 0"
+            *ngIf="otpSent"
+          >
+            {{ otpResendSeconds > 0 ? 'Resend OTP in ' + otpResendSeconds + 's' : 'Resend OTP' }}
+          </button>
+          <button class="link-button signup-link" type="button" (click)="showSignupForm()" *ngIf="authMode === 'login'">
+            Signup
+          </button>
+          <button class="link-button signup-link" type="button" (click)="showLoginForm()" *ngIf="authMode === 'signup'">
+            Back to login
           </button>
         </article>
 
