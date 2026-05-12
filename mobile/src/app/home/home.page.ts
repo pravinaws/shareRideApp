@@ -1241,7 +1241,6 @@ export class HomePage {
   stops = ['Mandya Bypass'];
   mapEmbedUrl: SafeResourceUrl;
   publishFlowStep = 2;
-  private startupPermissionsStarted = false;
   rideSetup = {
     seats: 3,
     pricePerSeat: 420,
@@ -1334,14 +1333,14 @@ export class HomePage {
       })}`;
     }, 5000);
 
-    this.startNativeIntroAndPermissions();
+    this.finishNativeIntro();
   }
 
   get currentRoute() {
     return this.currentRouteValue;
   }
 
-  private startNativeIntroAndPermissions() {
+  private finishNativeIntro() {
     if (!Capacitor.isNativePlatform()) {
       this.showIntroSplash = false;
       return;
@@ -1349,63 +1348,7 @@ export class HomePage {
 
     window.setTimeout(() => {
       this.showIntroSplash = false;
-      this.requestLoginStartupPermissions();
     }, 4000);
-  }
-
-  private async requestLoginStartupPermissions() {
-    if (!Capacitor.isNativePlatform() || this.startupPermissionsStarted || this.currentRouteValue !== '/login') {
-      return;
-    }
-
-    this.startupPermissionsStarted = true;
-    this.status = 'Checking app permissions...';
-    await this.presentToast('Allow notifications and location for ride updates');
-
-    try {
-      const notificationsReady = await this.requestNativeNotificationPermissions();
-      await this.requestLocationPermission();
-      this.status = notificationsReady ? 'App permissions ready.' : 'Notification permission pending.';
-    } catch {
-      this.status = 'Permissions can be enabled from phone settings.';
-    }
-  }
-
-  private async requestNativeNotificationPermissions() {
-    const localPermission = await LocalNotifications.checkPermissions().catch(() => ({ display: 'prompt' }));
-    if (localPermission.display !== 'granted') {
-      const localRequest = await LocalNotifications.requestPermissions();
-      if (localRequest.display !== 'granted') {
-        return false;
-      }
-    }
-
-    const pushPermission = await PushNotifications.checkPermissions().catch(() => ({ receive: 'prompt' }));
-    if (pushPermission.receive !== 'granted') {
-      const pushRequest = await PushNotifications.requestPermissions();
-      if (pushRequest.receive !== 'granted') {
-        return false;
-      }
-    }
-
-    await this.bindPushListeners();
-    await PushNotifications.register();
-    return true;
-  }
-
-  private requestLocationPermission() {
-    return new Promise<void>((resolve) => {
-      if (!navigator.geolocation) {
-        resolve();
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        () => resolve(),
-        () => resolve(),
-        { enableHighAccuracy: false, maximumAge: 600000, timeout: 6000 },
-      );
-    });
   }
 
   private normalizeRoute(url: string) {
