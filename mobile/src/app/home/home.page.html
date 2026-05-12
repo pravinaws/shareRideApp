@@ -1,4 +1,7 @@
-<ion-content [fullscreen]="true">
+<ion-content [fullscreen]="true" [forceOverscroll]="false">
+  <ion-refresher slot="fixed" (ionRefresh)="refreshCurrentScreen($event)">
+    <ion-refresher-content pullingText="Pull to refresh" refreshingText="Refreshing..."></ion-refresher-content>
+  </ion-refresher>
   <div class="intro-splash" *ngIf="showIntroSplash" aria-label="shareMILES loading">
     <img src="assets/app-logo.png" alt="shareMILES" />
   </div>
@@ -519,7 +522,7 @@
             <small>{{ chat.time }}</small>
           </article>
         </div>
-        <div class="typing-indicator"><span></span><span></span><span></span> Driver is typing</div>
+        <div class="typing-indicator" *ngIf="isTyping"><span></span><span></span><span></span> Typing...</div>
         <div class="attached-file" *ngIf="attachedFileName">
           <img
             *ngIf="attachedFileType === 'image' && attachedPreviewUrl"
@@ -540,7 +543,8 @@
           <input
             placeholder="Message"
             aria-label="Message"
-            [(ngModel)]="chatDraft"
+            [ngModel]="chatDraft"
+            (ngModelChange)="onChatDraftChange($event)"
             (keyup.enter)="sendChatMessage()"
           />
           <button type="button" aria-label="Send message" (click)="sendChatMessage()">
@@ -806,66 +810,77 @@
             <strong>{{ vehicles.length }}/2 owner vehicles added</strong>
             <span>Only two owner vehicles can be attached to this profile.</span>
           </article>
-          <div class="form-row input-row vehicle-lookup-row">
-            <span>
-              <small class="required-label">Make <em>*</em></small>
-              <input
-                [ngModel]="vehicleForm.make"
-                (ngModelChange)="onVehicleMakeChange($event)"
-                (focus)="openVehicleLookup('make')"
-                (blur)="closeVehicleLookup()"
-                aria-label="Vehicle make"
-                autocomplete="off"
-                placeholder="Search car make"
-              />
-            </span>
-            <ion-icon name="search-outline"></ion-icon>
-            <div class="vehicle-lookup-menu" *ngIf="activeVehicleLookup === 'make'">
-              <button type="button" *ngFor="let make of filteredVehicleMakeOptions" (mousedown)="selectVehicleMake(make); $event.preventDefault()">
-                {{ make }}
-              </button>
-              <small *ngIf="!filteredVehicleMakeOptions.length">No make found</small>
+          <div class="vehicle-form-grid">
+            <div class="form-row input-row vehicle-lookup-row">
+              <span>
+                <small class="required-label">Make <em>*</em></small>
+                <input
+                  [ngModel]="vehicleForm.make"
+                  (ngModelChange)="onVehicleMakeChange($event)"
+                  (focus)="openVehicleLookup('make')"
+                  (blur)="closeVehicleLookup()"
+                  aria-label="Vehicle make"
+                  autocomplete="off"
+                  placeholder="Search car make"
+                />
+              </span>
+              <ion-icon name="search-outline"></ion-icon>
+              <div class="vehicle-lookup-menu" *ngIf="activeVehicleLookup === 'make'">
+                <button type="button" *ngFor="let make of filteredVehicleMakeOptions" (mousedown)="selectVehicleMake(make); $event.preventDefault()">
+                  {{ make }}
+                </button>
+                <small *ngIf="!filteredVehicleMakeOptions.length">No make found</small>
+              </div>
             </div>
-          </div>
-          <div class="form-row input-row vehicle-lookup-row">
-            <span>
-              <small class="required-label">Model <em>*</em></small>
-              <input
-                [ngModel]="vehicleForm.model"
-                (ngModelChange)="onVehicleModelChange($event)"
-                (focus)="openVehicleLookup('model')"
-                (blur)="closeVehicleLookup()"
-                aria-label="Vehicle model"
-                autocomplete="off"
-                placeholder="Search model"
-              />
-            </span>
-            <ion-icon name="search-outline"></ion-icon>
-            <div class="vehicle-lookup-menu" *ngIf="activeVehicleLookup === 'model'">
-              <button
-                type="button"
-                *ngFor="let model of filteredVehicleModelOptions"
-                (mousedown)="selectVehicleModel(model); $event.preventDefault()"
-              >
-                <span>{{ model.name }}</span>
-                <small>{{ model.seats }} seats</small>
-              </button>
-              <small *ngIf="vehicleForm.make && !filteredVehicleModelOptions.length">Type model name if not listed</small>
-              <small *ngIf="!vehicleForm.make">Select or type make first</small>
+            <div class="form-row input-row vehicle-lookup-row">
+              <span>
+                <small class="required-label">Model <em>*</em></small>
+                <input
+                  [ngModel]="vehicleForm.model"
+                  (ngModelChange)="onVehicleModelChange($event)"
+                  (focus)="openVehicleLookup('model')"
+                  (blur)="closeVehicleLookup()"
+                  aria-label="Vehicle model"
+                  autocomplete="off"
+                  placeholder="Search model"
+                />
+              </span>
+              <ion-icon name="search-outline"></ion-icon>
+              <div class="vehicle-lookup-menu" *ngIf="activeVehicleLookup === 'model'">
+                <button
+                  type="button"
+                  *ngFor="let model of filteredVehicleModelOptions"
+                  (mousedown)="selectVehicleModel(model); $event.preventDefault()"
+                >
+                  <span>{{ model.name }}</span>
+                  <small>{{ model.seats }} seats</small>
+                </button>
+                <small *ngIf="vehicleForm.make && !filteredVehicleModelOptions.length">Type model name if not listed</small>
+                <small *ngIf="!vehicleForm.make">Select or type make first</small>
+              </div>
             </div>
+            <label class="form-row input-row">
+              <span><small>Color</small><input [(ngModel)]="vehicleForm.color" (focus)="activeVehicleLookup = null" aria-label="Vehicle color" /></span>
+            </label>
+            <label class="form-row input-row">
+              <span>
+                <small class="required-label">Plate number <em>*</em></small>
+                <input
+                  [ngModel]="vehicleForm.plateNumber"
+                  (ngModelChange)="onVehiclePlateInput($event)"
+                  aria-label="Plate number"
+                  autocapitalize="characters"
+                  autocomplete="off"
+                />
+              </span>
+            </label>
+            <label class="form-row input-row">
+              <span>
+                <small class="required-label">Seats <em>*</em></small>
+                <input type="number" min="1" max="12" [(ngModel)]="vehicleForm.seats" (focus)="activeVehicleLookup = null" aria-label="Vehicle seats" />
+              </span>
+            </label>
           </div>
-          <label class="form-row input-row">
-            <span><small>Color</small><input [(ngModel)]="vehicleForm.color" (focus)="activeVehicleLookup = null" aria-label="Vehicle color" /></span>
-          </label>
-          <label class="form-row input-row">
-            <span><small class="required-label">Plate number <em>*</em></small><input [(ngModel)]="vehicleForm.plateNumber" aria-label="Plate number" /></span>
-          </label>
-          <label class="form-row input-row">
-            <span>
-              <small class="required-label">Seats <em>*</em></small>
-              <input type="number" min="1" max="12" [(ngModel)]="vehicleForm.seats" (focus)="activeVehicleLookup = null" aria-label="Vehicle seats" />
-            </span>
-          </label>
           <label class="form-row input-row file-row">
             <span><small class="required-label">RC book <em>*</em></small><strong>{{ vehicleForm.rcDocumentUrl ? 'RC uploaded' : 'Upload RC book' }}</strong></span>
             <input type="file" accept="image/*" (change)="updateVehicleDocument($event, 'rcDocumentUrl')" aria-label="Upload RC book" />
@@ -914,7 +929,8 @@
               [attr.aria-disabled]="!isEditingVehicle && vehicles.length >= 2"
               [disabled]="vehicleSaving"
             >
-              {{ vehicleSaving ? 'Saving' : isEditingVehicle ? 'Save Vehicle' : 'Add Vehicle' }}
+              <span class="button-spinner" *ngIf="vehicleSaving"></span>
+              {{ vehicleSaving ? 'Saving...' : isEditingVehicle ? 'Save Vehicle' : 'Add Vehicle' }}
             </button>
           </div>
         </article>
@@ -1337,6 +1353,27 @@
           <small>Ride wallet</small>
           <strong>INR {{ walletBalance | number: '1.0-0' }}</strong>
           <span>Refunds and credits available instantly.</span>
+        </article>
+        <article class="minimal-card wallet-topup-card">
+          <div class="section-title compact"><h2>Add wallet balance</h2></div>
+          <div class="quick-amounts" role="group" aria-label="Quick wallet amounts">
+            <button
+              type="button"
+              *ngFor="let amount of quickWalletAmounts"
+              [class.active]="walletTopUpAmount === amount"
+              (click)="setWalletTopUpAmount(amount)"
+            >
+              INR {{ amount }}
+            </button>
+          </div>
+          <label class="form-row input-row">
+            <span>
+              <small>Top-up amount</small>
+              <input type="number" min="1" [(ngModel)]="walletTopUpAmount" aria-label="Wallet top-up amount" />
+            </span>
+            <ion-icon name="wallet-outline"></ion-icon>
+          </label>
+          <button class="primary-button" type="button" (click)="topUpWallet()">Add money</button>
         </article>
         <article class="payment-method" *ngFor="let payment of payments">
           <ion-icon name="card-outline"></ion-icon>

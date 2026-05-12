@@ -19,7 +19,8 @@ const corsOrigin = !process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === '*'
 
 app.use(helmet());
 app.use(cors({ origin: corsOrigin }));
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 function requireFields(body, fields) {
   return fields.filter((field) => body[field] === undefined || body[field] === null || body[field] === '');
@@ -389,13 +390,21 @@ app.get('/api/messages/:rideId', requireAuth, (req, res) => {
 });
 
 app.post('/api/messages', requireAuth, (req, res) => {
-  const missing = requireFields(req.body, ['rideId', 'receiverId', 'message']);
+  const missing = requireFields(req.body, ['rideId', 'message']);
   if (missing.length) return badRequest(res, missing);
+  const ride = store.rides.find((item) => item.ride_id === asNumber(req.body.rideId));
+  const inferredReceiverId = ride
+    ? (ride.driver_id === req.user.sub ? ride.passenger_id : ride.driver_id)
+    : undefined;
+  const receiverId = asNumber(req.body.receiverId || inferredReceiverId || 2);
+  if (receiverId === req.user.sub) {
+    return res.status(422).json({ error: 'Receiver must be a different user' });
+  }
   const message = {
     message_id: nextId(store.messages, 'message_id'),
     ride_id: asNumber(req.body.rideId),
     sender_id: req.user.sub,
-    receiver_id: asNumber(req.body.receiverId),
+    receiver_id: receiverId,
     message: req.body.message,
     attachment_url: req.body.attachmentUrl || null,
     is_seen: false,

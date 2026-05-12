@@ -68,6 +68,8 @@ interface LocationSuggestion {
 }
 
 interface RideSearchResult {
+  id?: number;
+  driverId?: number;
   driver: string;
   photo: string;
   rating: string;
@@ -126,7 +128,7 @@ interface NotificationCenterItem {
   unread: boolean;
   icon: string;
   bookingDetails?: BookingRequestDetails;
-  action?: 'same_route';
+  action?: 'same_route' | 'messages' | 'vehicles' | 'payments' | 'profile' | 'rides';
 }
 
 interface ProfileVehicle {
@@ -800,6 +802,8 @@ export class HomePage {
   attachedFileName = '';
   attachedFileType: 'image' | 'file' = 'file';
   attachedPreviewUrl = '';
+  isTyping = false;
+  private typingTimer?: number;
   settings = [
     'Saved payment methods',
     'Identity verification',
@@ -855,6 +859,8 @@ export class HomePage {
     { brand: 'UPI', last4: 'harshala@upi', label: 'Fast refunds', status: 'Verified' },
   ];
   walletBalance = 2480;
+  walletTopUpAmount = 500;
+  readonly quickWalletAmounts = [100, 500, 1000];
   rideDetailsBackRoute = '/results';
   selectedBookingRequest: BookingRequestDetails | null = null;
   ownerProfileOpen = false;
@@ -1317,6 +1323,7 @@ export class HomePage {
 
     this.restoreRealtimeState();
     this.restoreProfilePhoto();
+    this.restoreAuthenticatedSession();
     this.bindRealtimeEvents();
     this.loadProfile();
     this.router.events
@@ -1356,8 +1363,29 @@ export class HomePage {
   private normalizeRoute(url: string) {
     const path = (url || '').split('?')[0].replace(/\/+$/, '') || '/';
     if (path === '/home') return '/publish';
-    if (path === '/') return this.auth.isAuthenticated ? '/search' : '/login';
+    if (path === '/' || (path === '/login' && this.auth.isAuthenticated)) return this.auth.isAuthenticated ? '/search' : '/login';
     return path;
+  }
+
+  private restoreAuthenticatedSession() {
+    const user = this.auth.user;
+    if (!this.auth.isAuthenticated || !user) {
+      this.isLoggedIn = false;
+      return;
+    }
+
+    this.isLoggedIn = true;
+    this.profile = {
+      ...this.profile,
+      fullName: user.full_name || this.profile.fullName,
+      role: user.role || this.profile.role,
+      verificationStatus: user.verification_status || this.profile.verificationStatus,
+    };
+    this.realtime.connect();
+    if (this.currentRouteValue === '/login') {
+      this.currentRouteValue = '/search';
+      this.router.navigateByUrl('/search');
+    }
   }
 
   private restoreProfilePhoto() {
@@ -1426,6 +1454,22 @@ export class HomePage {
       this.loadProfile();
     }
     this.router.navigateByUrl(route);
+  }
+
+  refreshCurrentScreen(event?: CustomEvent) {
+    this.liveActivity = 'Refreshing latest app data...';
+    if (this.auth.isAuthenticated && this.auth.token !== 'demo-token') {
+      if (['/profile', '/vehicles', '/settings', '/payments', '/notifications'].includes(this.currentRoute)) {
+        this.loadProfile();
+      }
+      if (this.currentRoute === '/results' || this.currentRoute === '/search') {
+        this.searchRides();
+      }
+    }
+    window.setTimeout(() => {
+      (event?.target as any)?.complete?.();
+      this.liveActivity = 'Refresh complete';
+    }, 450);
   }
 
   get profilePreferenceList() {
@@ -1575,10 +1619,10 @@ export class HomePage {
       });
   }
 
-  saveProfile() {
+  saveProfile(options: { silent?: boolean } = {}) {
     localStorage.setItem('rideshare.profilePhotoUrl', this.profile.photoUrl);
     if (!this.auth.isAuthenticated || this.auth.token === 'demo-token') {
-      this.presentToast('Profile photo updated');
+      if (!options.silent) this.presentToast('Profile photo updated');
       return;
     }
 
@@ -1598,7 +1642,7 @@ export class HomePage {
       .subscribe({
         next: () => {
           this.profileSaving = false;
-          this.presentToast('Profile saved');
+          if (!options.silent) this.presentToast('Profile saved');
           this.loadProfile();
         },
         error: (error) => {
@@ -1617,7 +1661,8 @@ export class HomePage {
     reader.onload = () => {
       this.profile.photoUrl = String(reader.result || this.profile.photoUrl);
       localStorage.setItem('rideshare.profilePhotoUrl', this.profile.photoUrl);
-      this.saveProfile();
+      this.saveProfile({ silent: true });
+      this.presentToast('Profile photo updated');
     };
     reader.readAsDataURL(file);
   }
@@ -1887,6 +1932,7 @@ export class HomePage {
       next: () => {
         this.loginSubmitting = false;
         this.isLoggedIn = true;
+        this.restoreAuthenticatedSession();
         this.stopOtpResendTimer();
         this.liveActivity = 'WhatsApp OTP verified · realtime session started';
         this.realtime.connect();
@@ -2048,13 +2094,16 @@ export class HomePage {
 
     this.chats = [...this.chats, sentMessage];
     this.chatDraft = '';
+    this.clearTypingState();
     this.clearChatAttachment();
     this.liveActivity = 'Message sent · realtime sync pending';
 
+    const currentUserId = this.auth.user?.user_id || 1;
+    const receiverId = this.selectedRide.driverId && this.selectedRide.driverId !== currentUserId ? this.selectedRide.driverId : 2;
     this.api
       .sendMessage({
-        rideId: 1,
-        receiverId: 2,
+        rideId: this.selectedRide.id || 1,
+        receiverId,
         message: sentMessage.text,
         attachmentUrl: sentMessage.attachment ? `local://${sentMessage.attachment}` : undefined,
       })
@@ -2066,6 +2115,48 @@ export class HomePage {
           this.liveActivity = 'Message saved locally · backend not connected';
         },
       });
+  }
+
+  onChatDraftChange(value: string) {
+    this.chatDraft = value;
+    this.isTyping = Boolean(value.trim());
+    if (this.typingTimer) window.clearTimeout(this.typingTimer);
+    this.typingTimer = window.setTimeout(() => this.clearTypingState(), 1500);
+  }
+
+  private clearTypingState() {
+    this.isTyping = false;
+    if (this.typingTimer) {
+      window.clearTimeout(this.typingTimer);
+      this.typingTimer = undefined;
+    }
+  }
+
+  setWalletTopUpAmount(amount: number) {
+    this.walletTopUpAmount = amount;
+  }
+
+  topUpWallet() {
+    const amount = Number(this.walletTopUpAmount);
+    if (!amount || amount < 1) {
+      this.presentToast('Enter a valid wallet amount');
+      return;
+    }
+
+    this.walletBalance += amount;
+    this.transactions = [
+      { title: 'Wallet money added', amount: `+ INR ${amount}`, status: 'Payment success', date: 'Now' },
+      ...this.transactions,
+    ];
+    this.presentToast(`INR ${amount} added to wallet`);
+
+    if (this.auth.isAuthenticated && this.auth.token !== 'demo-token') {
+      this.api.createPayment({ bookingId: 0, amount, provider: 'wallet_topup' }).subscribe({
+        error: () => {
+          this.liveActivity = 'Wallet top-up saved locally Â· backend not connected';
+        },
+      });
+    }
   }
 
   deleteChatMessage(messageId: number) {
@@ -2137,8 +2228,22 @@ export class HomePage {
     }
     if (item.action === 'same_route') {
       this.viewSameRouteRidesFromNotification();
+      this.saveRealtimeState();
+      return;
     }
+    const targetRoute = this.notificationTargetRoute(item);
+    if (targetRoute) this.goTo(targetRoute);
     this.saveRealtimeState();
+  }
+
+  private notificationTargetRoute(item: NotificationCenterItem) {
+    const text = `${item.type} ${item.title} ${item.message} ${item.action || ''}`.toLowerCase();
+    if (item.action === 'messages' || text.includes('message') || text.includes('chat')) return '/chat';
+    if (item.action === 'vehicles' || text.includes('vehicle') || text.includes('verification')) return '/vehicles';
+    if (item.action === 'payments' || text.includes('payment') || text.includes('wallet') || text.includes('refund')) return '/payments';
+    if (item.action === 'profile' || text.includes('profile') || text.includes('document')) return '/profile';
+    if (item.action === 'rides' || text.includes('ride') || text.includes('booking')) return '/your-rides';
+    return '';
   }
 
   viewSameRouteRidesFromNotification() {
@@ -2575,11 +2680,14 @@ export class HomePage {
       return;
     }
 
+    const plateNumber = this.normalizePlateNumber(this.vehicleForm.plateNumber);
+    this.vehicleForm.plateNumber = plateNumber;
+
     const payload = {
       make: this.vehicleForm.make.trim(),
       model: this.vehicleForm.model.trim(),
       color: this.vehicleForm.color,
-      plateNumber: this.vehicleForm.plateNumber.trim(),
+      plateNumber,
       seats: Math.max(1, Math.min(12, Number(this.vehicleForm.seats))),
       rcDocumentUrl: this.vehicleForm.rcDocumentUrl,
       insuranceDocumentUrl: this.vehicleForm.insuranceDocumentUrl,
@@ -2620,7 +2728,7 @@ export class HomePage {
           make: saved.make || this.vehicleForm.make,
           model: saved.model || this.vehicleForm.model,
           color: saved.color || this.vehicleForm.color,
-          plateNumber: saved.plate_number || this.vehicleForm.plateNumber,
+          plateNumber: saved.plate_number || plateNumber,
           seats: saved.seats || this.vehicleForm.seats,
           status: saved.status || 'pending',
           rcDocumentUrl: saved.rc_document_url || this.vehicleForm.rcDocumentUrl,
@@ -2657,6 +2765,14 @@ export class HomePage {
     this.liveActivity = isEdit ? 'Vehicle updated · notification pushed in realtime' : 'Vehicle created · notification pushed in realtime';
     this.saveRealtimeState();
     this.presentToast(isEdit ? 'Vehicle updated successfully' : 'Vehicle added successfully');
+  }
+
+  onVehiclePlateInput(value: string) {
+    this.vehicleForm.plateNumber = this.normalizePlateNumber(value);
+  }
+
+  private normalizePlateNumber(value: string) {
+    return String(value || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').replace(/^\s+/, '');
   }
 
   editVehicle(vehicle: ProfileVehicle) {
@@ -3550,6 +3666,8 @@ export class HomePage {
               const totalSeats = Number(ride.total_seats ?? templateRide.totalSeats);
               return {
                 ...templateRide,
+                id: ride.ride_id,
+                driverId: ride.driver_id,
                 departure: ride.departure_at
                   ? new Date(ride.departure_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                   : templateRide.departure,
