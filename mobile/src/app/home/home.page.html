@@ -5,6 +5,9 @@
   <div class="intro-splash" *ngIf="showIntroSplash" aria-label="shareMILES loading">
     <img src="assets/app-logo.png" alt="shareMILES" />
   </div>
+  <div class="loading-overlay" *ngIf="appLoading || profileLoading || vehicleSaving || chatLoading || walletProcessing" aria-label="Loading">
+    <span class="loading-icon"></span>
+  </div>
 
   <main class="app-shell">
     <ng-container [ngSwitch]="currentRoute">
@@ -522,7 +525,8 @@
             <small>{{ chat.time }}</small>
           </article>
         </div>
-        <div class="typing-indicator" *ngIf="isTyping"><span></span><span></span><span></span> Typing...</div>
+        <div class="typing-indicator" *ngIf="remoteTypingUser"><span></span><span></span><span></span> {{ remoteTypingUser }} is typing...</div>
+        <div class="typing-indicator mine" *ngIf="isTyping"><span></span><span></span><span></span> Typing...</div>
         <div class="attached-file" *ngIf="attachedFileName">
           <img
             *ngIf="attachedFileType === 'image' && attachedPreviewUrl"
@@ -563,12 +567,12 @@
           <ion-icon name="search-outline"></ion-icon>
           <input placeholder="Search messages" aria-label="Search messages" />
         </label>
-        <article class="conversation-card" *ngFor="let conversation of conversations" (click)="goTo('/chat')">
+        <article class="conversation-card" *ngFor="let conversation of conversations" (click)="openConversation(conversation)" [class.unread]="conversation.unread">
           <img [src]="conversation.image" [alt]="conversation.name" />
           <div>
             <strong>{{ conversation.name }}</strong>
             <span>{{ conversation.trip }}</span>
-            <p>{{ conversation.last }}</p>
+            <p [class.bold-preview]="conversation.unread">{{ conversation.last }}</p>
           </div>
           <aside>
             <small>{{ conversation.time }}</small>
@@ -1373,7 +1377,9 @@
             </span>
             <ion-icon name="wallet-outline"></ion-icon>
           </label>
-          <button class="primary-button" type="button" (click)="topUpWallet()">Add money</button>
+          <button class="primary-button" type="button" (click)="topUpWallet()" [disabled]="walletProcessing">
+            {{ walletProcessing ? 'Opening Razorpay...' : 'Add Money with Razorpay' }}
+          </button>
         </article>
         <article class="payment-method" *ngFor="let payment of payments">
           <ion-icon name="card-outline"></ion-icon>
@@ -1603,7 +1609,10 @@
         </header>
         <img [src]="adminDocumentPreviewUrl(selectedAdminDocument)" [alt]="selectedAdminDocument.label" />
         <b [ngClass]="adminStatusClass(selectedAdminDocument.status)">{{ selectedAdminDocument.status | titlecase }}</b>
-        <button type="button" (click)="closeAdminDocumentPreview()">Close</button>
+          <div class="document-preview-actions">
+            <a [href]="adminDocumentPreviewUrl(selectedAdminDocument)" [download]="selectedAdminDocument.label + '.png'">Download</a>
+            <button type="button" (click)="closeAdminDocumentPreview()">Close</button>
+          </div>
       </article>
     </div>
   </main>

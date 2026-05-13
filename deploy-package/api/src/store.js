@@ -1,6 +1,11 @@
-const now = () => new Date().toISOString();
+import fs from 'fs';
+import path from 'path';
 
-export const store = {
+const now = () => new Date().toISOString();
+const dataDir = path.resolve(process.cwd(), 'data');
+const storePath = path.join(dataDir, 'store.json');
+
+const initialStore = {
   users: [
     {
       user_id: 1,
@@ -84,6 +89,10 @@ export const store = {
       destination: 'Mysuru',
       pickup_point: 'Bengaluru Central Metro Gate 2',
       drop_point: 'Mysuru Palace Road',
+      origin_lat: 12.9716,
+      origin_lng: 77.5946,
+      destination_lat: 12.2958,
+      destination_lng: 76.6394,
       departure_at: '2026-05-08T08:30:00.000Z',
       price_per_seat: 420,
       seats_available: 3,
@@ -218,6 +227,29 @@ export const store = {
   saved_passengers: [],
 };
 
+export const store = loadStore();
+
+function loadStore() {
+  try {
+    if (fs.existsSync(storePath)) {
+      return JSON.parse(fs.readFileSync(storePath, 'utf8'));
+    }
+  } catch (error) {
+    console.error(`Store load failed: ${error.message}`);
+  }
+
+  return initialStore;
+}
+
+export function persistStore() {
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(storePath, JSON.stringify(store, null, 2));
+  } catch (error) {
+    console.error(`Store persist failed: ${error.message}`);
+  }
+}
+
 export function nextId(collection, key) {
   return Math.max(0, ...collection.map((item) => Number(item[key]) || 0)) + 1;
 }
@@ -249,6 +281,7 @@ export function addNotification({ userId, type, title, message, metadata }) {
     created_at: now(),
   };
   store.notifications.unshift(notification);
+  persistStore();
   return notification;
 }
 

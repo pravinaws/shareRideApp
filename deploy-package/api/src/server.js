@@ -7,12 +7,13 @@ import { saveNotificationLog, upsertDeviceToken } from './db.js';
 import { buildNotificationPayload, driverNotificationFlows, passengerNotificationFlows } from './notification-flows.js';
 import { sendPush } from './push.js';
 import { addRealtimeClient, publishRealtime } from './realtime.js';
-import { addNotification, nextId, paginate, publicUser, store } from './store.js';
+import { addNotification, nextId, paginate, persistStore, publicUser, store } from './store.js';
 import { sendWhatsAppNotification } from './whatsapp-notifier.js';
 import { normalizePhone, sendWhatsAppOtp, verifyWhatsAppOtp } from './whatsapp-otp.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
+const host = process.env.HOST || '0.0.0.0';
 const corsOrigin = !process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === '*'
   ? true
   : process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean);
@@ -32,6 +33,41 @@ function badRequest(res, missing) {
 
 function asNumber(value) {
   return Number.parseInt(value, 10);
+}
+
+function normalizeText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function haversineKm(firstLat, firstLng, secondLat, secondLng) {
+  if ([firstLat, firstLng, secondLat, secondLng].some((value) => Number.isNaN(Number(value)))) return null;
+  const earthRadiusKm = 6371;
+  const toRadians = (value) => (Number(value) * Math.PI) / 180;
+  const latDelta = toRadians(secondLat - firstLat);
+  const lngDelta = toRadians(secondLng - firstLng);
+  const a =
+    Math.sin(latDelta / 2) ** 2 +
+    Math.cos(toRadians(firstLat)) * Math.cos(toRadians(secondLat)) * Math.sin(lngDelta / 2) ** 2;
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function rideMatchesRoute(ride, origin, destination) {
+  const originText = normalizeText(origin);
+  const destinationText = normalizeText(destination);
+  const rideOrigin = `${ride.origin} ${ride.pickup_point}`.toLowerCase();
+  const rideDestination = `${ride.destination} ${ride.drop_point}`.toLowerCase();
+  return (!originText || rideOrigin.includes(originText) || originText.includes(normalizeText(ride.origin))) &&
+    (!destinationText || rideDestination.includes(destinationText) || destinationText.includes(normalizeText(ride.destination)));
+}
+
+function publicMessage(message) {
+  const sender = store.users.find((user) => user.user_id === message.sender_id);
+  const receiver = store.users.find((user) => user.user_id === message.receiver_id);
+  return {
+    ...message,
+    sender: sender ? publicUser(sender) : null,
+    receiver: receiver ? publicUser(receiver) : null,
+  };
 }
 
 function notifyUserMobile(userId, title, message, variables) {
@@ -156,14 +192,25 @@ app.patch('/api/users/me', requireAuth, (req, res) => {
     if (req.body[field] !== undefined) user[field] = req.body[field];
   });
   user.updated_at = new Date().toISOString();
+  persistStore();
   res.json({ ok: true, user });
 });
 
 app.get('/api/rides', requireAuth, (req, res) => {
-  const { origin, destination, verified, instant, status } = req.query;
+  const { origin, destination, verified, instant, status, originLat, originLng, destinationLat, destinationLng } = req.query;
   let rides = [...store.rides];
-  if (origin) rides = rides.filter((ride) => ride.origin.toLowerCase().includes(String(origin).toLowerCase()));
-  if (destination) rides = rides.filter((ride) => ride.destination.toLowerCase().includes(String(destination).toLowerCase()));
+  if (origin || destination) rides = rides.filter((ride) => rideMatchesRoute(ride, origin, destination));
+  const hasSearchCoordinates = originLat && originLng && destinationLat && destinationLng;
+  if (hasSearchCoordinates) {
+    rides = rides.filter((ride) => {
+      if (![ride.origin_lat, ride.origin_lng, ride.destination_lat, ride.destination_lng].every((value) => value !== undefined)) {
+        return rideMatchesRoute(ride, origin, destination);
+      }
+      const pickupDistance = haversineKm(Number(originLat), Number(originLng), ride.origin_lat, ride.origin_lng);
+      const dropDistance = haversineKm(Number(destinationLat), Number(destinationLng), ride.destination_lat, ride.destination_lng);
+      return pickupDistance !== null && dropDistance !== null && pickupDistance <= 10 && dropDistance <= 10;
+    });
+  }
   if (status) rides = rides.filter((ride) => ride.status === status);
   if (instant === 'true') rides = rides.filter((ride) => ride.instant_booking);
   if (verified === 'true') {
@@ -194,6 +241,10 @@ app.post('/api/rides', requireAuth, requireRole('driver', 'admin'), (req, res) =
     destination: req.body.destination,
     pickup_point: req.body.pickupPoint || req.body.origin,
     drop_point: req.body.dropPoint || req.body.destination,
+    origin_lat: req.body.originLat === undefined ? null : Number(req.body.originLat),
+    origin_lng: req.body.originLng === undefined ? null : Number(req.body.originLng),
+    destination_lat: req.body.destinationLat === undefined ? null : Number(req.body.destinationLat),
+    destination_lng: req.body.destinationLng === undefined ? null : Number(req.body.destinationLng),
     departure_at: req.body.departureAt,
     price_per_seat: Number(req.body.pricePerSeat),
     seats_available: asNumber(req.body.totalSeats),
@@ -205,6 +256,7 @@ app.post('/api/rides', requireAuth, requireRole('driver', 'admin'), (req, res) =
     updated_at: new Date().toISOString(),
   };
   store.rides.unshift(ride);
+  persistStore();
   res.status(201).json({ ok: true, ride });
 });
 
@@ -247,6 +299,7 @@ app.post('/api/bookings', requireAuth, (req, res) => {
     updated_at: new Date().toISOString(),
   };
   store.bookings.unshift(booking);
+  persistStore();
 
   const passengerNotification = addNotification({
     userId: req.user.sub,
@@ -296,6 +349,17 @@ app.patch('/api/bookings/:bookingId', requireAuth, (req, res) => {
   if (!booking) return res.status(404).json({ error: 'Booking not found' });
   booking.status = req.body.status || booking.status;
   booking.updated_at = new Date().toISOString();
+  const ride = store.rides.find((item) => item.ride_id === booking.ride_id);
+  const passengerNotification = addNotification({
+    userId: booking.passenger_id,
+    type: 'ride_confirmation_updated',
+    title: 'Ride request updated',
+    message: `Your booking is now ${booking.status}.`,
+    metadata: { booking_id: booking.booking_id, ride_id: booking.ride_id },
+  });
+  publishRealtime(booking.passenger_id, 'booking.updated', { booking, ride, notification: passengerNotification });
+  publishRealtime(ride?.driver_id, 'booking.updated', { booking, ride });
+  persistStore();
   res.json({ ok: true, booking });
 });
 
@@ -337,6 +401,7 @@ app.post('/api/vehicles', requireAuth, requireRole('driver', 'admin'), (req, res
     updated_at: new Date().toISOString(),
   };
   store.vehicles.unshift(vehicle);
+  persistStore();
   const notification = addNotification({
     userId: req.user.sub,
     type: 'vehicle_added',
@@ -367,6 +432,7 @@ app.patch('/api/vehicles/:vehicleId', requireAuth, (req, res) => {
   const validStatuses = ['pending', 'reupload', 'rejected', 'verified'];
   vehicle.status = req.user.role === 'admin' && validStatuses.includes(req.body.status) ? req.body.status : 'pending';
   vehicle.updated_at = new Date().toISOString();
+  persistStore();
   res.json({ ok: true, vehicle });
 });
 
@@ -375,17 +441,41 @@ app.delete('/api/vehicles/:vehicleId', requireAuth, (req, res) => {
   if (index < 0) return res.status(404).json({ error: 'Vehicle not found' });
   if (store.vehicles[index].owner_id !== req.user.sub && req.user.role !== 'admin') return res.status(403).json({ error: 'Not vehicle owner' });
   const [vehicle] = store.vehicles.splice(index, 1);
+  persistStore();
   res.json({ ok: true, vehicle });
 });
 
 app.get('/api/messages/conversations', requireAuth, (req, res) => {
   const messages = store.messages.filter((message) => message.sender_id === req.user.sub || message.receiver_id === req.user.sub);
-  res.json({ ok: true, ...paginate(messages, req) });
+  const grouped = new Map();
+  [...messages]
+    .sort((first, second) => new Date(second.created_at).getTime() - new Date(first.created_at).getTime())
+    .forEach((message) => {
+      const otherUserId = message.sender_id === req.user.sub ? message.receiver_id : message.sender_id;
+      const key = `${message.ride_id}:${otherUserId}`;
+      const existing = grouped.get(key);
+      const otherUser = store.users.find((user) => user.user_id === otherUserId);
+      if (!existing) {
+        grouped.set(key, {
+          conversation_id: key,
+          ride_id: message.ride_id,
+          other_user_id: otherUserId,
+          other_user: otherUser ? publicUser(otherUser) : null,
+          latest_message: publicMessage(message),
+          unread_count: messages.filter((item) => item.sender_id === otherUserId && item.receiver_id === req.user.sub && !item.is_seen).length,
+          updated_at: message.created_at,
+        });
+      }
+    });
+  res.json({ ok: true, ...paginate([...grouped.values()], req) });
 });
 
 app.get('/api/messages/:rideId', requireAuth, (req, res) => {
   const rideId = asNumber(req.params.rideId);
-  const messages = store.messages.filter((message) => message.ride_id === rideId);
+  const messages = store.messages
+    .filter((message) => message.ride_id === rideId && (message.sender_id === req.user.sub || message.receiver_id === req.user.sub))
+    .sort((first, second) => new Date(first.created_at).getTime() - new Date(second.created_at).getTime())
+    .map(publicMessage);
   res.json({ ok: true, ...paginate(messages, req) });
 });
 
@@ -393,8 +483,9 @@ app.post('/api/messages', requireAuth, (req, res) => {
   const missing = requireFields(req.body, ['rideId', 'message']);
   if (missing.length) return badRequest(res, missing);
   const ride = store.rides.find((item) => item.ride_id === asNumber(req.body.rideId));
+  const booking = store.bookings.find((item) => item.ride_id === asNumber(req.body.rideId));
   const inferredReceiverId = ride
-    ? (ride.driver_id === req.user.sub ? ride.passenger_id : ride.driver_id)
+    ? (ride.driver_id === req.user.sub ? booking?.passenger_id : ride.driver_id)
     : undefined;
   const receiverId = asNumber(req.body.receiverId || inferredReceiverId || 2);
   if (receiverId === req.user.sub) {
@@ -411,21 +502,39 @@ app.post('/api/messages', requireAuth, (req, res) => {
     created_at: new Date().toISOString(),
   };
   store.messages.push(message);
+  persistStore();
   const notification = addNotification({
     userId: message.receiver_id,
     type: 'message_received',
     title: 'New message received',
     message: message.message,
   });
-  publishRealtime(message.receiver_id, 'message.created', { message, notification });
+  publishRealtime(message.receiver_id, 'message.created', { message: publicMessage(message), notification });
+  publishRealtime(message.sender_id, 'message.created', { message: publicMessage(message) });
   notifyUserMobile(message.receiver_id, notification.title, notification.message);
-  res.status(201).json({ ok: true, message });
+  res.status(201).json({ ok: true, message: publicMessage(message) });
+});
+
+app.post('/api/messages/typing', requireAuth, (req, res) => {
+  const missing = requireFields(req.body, ['rideId', 'receiverId']);
+  if (missing.length) return badRequest(res, missing);
+  const payload = {
+    ride_id: asNumber(req.body.rideId),
+    sender_id: req.user.sub,
+    receiver_id: asNumber(req.body.receiverId),
+    is_typing: Boolean(req.body.isTyping),
+    created_at: new Date().toISOString(),
+  };
+  publishRealtime(payload.receiver_id, 'message.typing', payload);
+  res.status(202).json({ ok: true, typing: payload });
 });
 
 app.patch('/api/messages/:messageId/seen', requireAuth, (req, res) => {
   const message = store.messages.find((item) => item.message_id === asNumber(req.params.messageId));
   if (!message) return res.status(404).json({ error: 'Message not found' });
+  if (message.receiver_id !== req.user.sub) return res.status(403).json({ error: 'Not message receiver' });
   message.is_seen = true;
+  persistStore();
   res.json({ ok: true, message });
 });
 
@@ -680,25 +789,76 @@ app.get('/api/admin/ad-analytics', requireAuth, requireRole('admin'), (_req, res
 
 app.get('/api/payments', requireAuth, (req, res) => {
   const payments = store.payments.filter((payment) => payment.payer_id === req.user.sub);
-  res.json({ ok: true, ...paginate(payments, req) });
+  const user = store.users.find((item) => item.user_id === req.user.sub);
+  res.json({ ok: true, walletBalance: Number(user?.wallet_balance || 0), ...paginate(payments, req) });
 });
 
 app.post('/api/payments', requireAuth, (req, res) => {
   const missing = requireFields(req.body, ['bookingId', 'amount', 'provider']);
   if (missing.length) return badRequest(res, missing);
+  const amount = Number(req.body.amount);
+  if (!Number.isFinite(amount) || amount < 1) {
+    return res.status(422).json({ error: 'Enter a valid amount' });
+  }
   const payment = {
     payment_id: nextId(store.payments, 'payment_id'),
     booking_id: asNumber(req.body.bookingId),
     payer_id: req.user.sub,
-    amount: Number(req.body.amount),
+    amount,
     provider: req.body.provider,
-    status: 'paid',
+    status: req.body.provider === 'razorpay' ? 'created' : 'paid',
+    razorpay_order_id: req.body.provider === 'razorpay' ? `order_${Date.now()}_${req.user.sub}` : null,
+    razorpay_payment_id: null,
     refund_status: 'none',
     created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
   store.payments.unshift(payment);
+  if (payment.status === 'paid') {
+    const user = store.users.find((item) => item.user_id === req.user.sub);
+    if (user) user.wallet_balance = Number(user.wallet_balance || 0) + amount;
+    notifyUserMobile(req.user.sub, 'Payment successful', `Payment of INR ${payment.amount} was completed.`);
+  }
+  persistStore();
+  res.status(201).json({
+    ok: true,
+    payment,
+    razorpay: {
+      keyId: process.env.RAZORPAY_KEY_ID || '',
+      orderId: payment.razorpay_order_id,
+      amount: Math.round(amount * 100),
+      currency: 'INR',
+      name: 'shareMILES Wallet',
+      description: 'Wallet top-up',
+    },
+  });
+});
+
+app.post('/api/payments/:paymentId/verify', requireAuth, (req, res) => {
+  const payment = store.payments.find((item) => item.payment_id === asNumber(req.params.paymentId) && item.payer_id === req.user.sub);
+  if (!payment) return res.status(404).json({ error: 'Payment not found' });
+  if (payment.status === 'paid') {
+    const user = store.users.find((item) => item.user_id === req.user.sub);
+    return res.json({ ok: true, payment, walletBalance: Number(user?.wallet_balance || 0) });
+  }
+
+  const gatewayStatus = String(req.body.status || '').toLowerCase();
+  const paymentId = req.body.razorpayPaymentId || req.body.razorpay_payment_id;
+  if (gatewayStatus !== 'success' || !paymentId) {
+    payment.status = gatewayStatus === 'cancelled' ? 'cancelled' : gatewayStatus === 'failed' ? 'failed' : 'pending';
+    payment.updated_at = new Date().toISOString();
+    persistStore();
+    return res.status(422).json({ ok: false, error: 'Payment was not successful', payment });
+  }
+
+  payment.status = 'paid';
+  payment.razorpay_payment_id = paymentId;
+  payment.updated_at = new Date().toISOString();
+  const user = store.users.find((item) => item.user_id === req.user.sub);
+  if (user) user.wallet_balance = Number(user.wallet_balance || 0) + Number(payment.amount || 0);
+  persistStore();
   notifyUserMobile(req.user.sub, 'Payment successful', `Payment of INR ${payment.amount} was completed.`);
-  res.status(201).json({ ok: true, payment });
+  res.json({ ok: true, payment, walletBalance: Number(user?.wallet_balance || 0) });
 });
 
 app.get('/api/reviews', requireAuth, (req, res) => {
@@ -794,6 +954,6 @@ app.use((error, _req, res, _next) => {
   res.status(error.status || 500).json({ error: error.message });
 });
 
-app.listen(port, () => {
-  console.log(`FastForward API listening on http://localhost:${port}`);
+app.listen(port, host, () => {
+  console.log(`FastForward API listening on http://${host}:${port}`);
 });
