@@ -1874,6 +1874,10 @@ export class HomePage {
     return /^\d{10}$/.test(this.loginForm.phone);
   }
 
+  private isSignupEmailValid() {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(this.loginForm.email || '').trim());
+  }
+
   private getApiErrorMessage(error: any, fallback: string) {
     if (error?.status === 0) {
       return `Cannot reach API ${this.apiUrl}. Check mobile internet and reinstall the latest APK.`;
@@ -1890,6 +1894,11 @@ export class HomePage {
 
     if (!this.isLoginPhoneValid()) {
       this.presentToast('Enter 10 digit numeric mobile number');
+      return;
+    }
+
+    if (this.authMode === 'signup' && !this.isSignupEmailValid()) {
+      this.presentToast('Enter valid email for notifications');
       return;
     }
 
@@ -1958,6 +1967,11 @@ export class HomePage {
 
     if (this.loginForm.otp.length < 4) {
       this.presentToast('Enter OTP received on WhatsApp');
+      return;
+    }
+
+    if (this.authMode === 'signup' && !this.isSignupEmailValid()) {
+      this.presentToast('Enter valid email for notifications');
       return;
     }
 

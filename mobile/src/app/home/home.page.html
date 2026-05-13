@@ -22,17 +22,17 @@
             <h1>{{ authMode === 'signup' ? 'Create account' : 'Mobile login' }}</h1>
             <p>Use WhatsApp OTP verification to continue.</p>
           </div>
-          <label class="form-row input-row" *ngIf="authMode === 'signup'">
+          <label class="form-row input-row auth-inline-row" *ngIf="authMode === 'signup'">
             <span>
               <small>Full name</small>
               <input [(ngModel)]="loginForm.fullName" aria-label="Full name" autocomplete="name" />
             </span>
             <ion-icon name="person-circle-outline"></ion-icon>
           </label>
-          <label class="form-row input-row" *ngIf="authMode === 'signup'">
+          <label class="form-row input-row auth-inline-row" *ngIf="authMode === 'signup'">
             <span>
               <small>Email</small>
-              <input [(ngModel)]="loginForm.email" aria-label="Email" autocomplete="email" inputmode="email" />
+              <input [(ngModel)]="loginForm.email" aria-label="Email" autocomplete="email" inputmode="email" placeholder="name@example.com" />
             </span>
             <ion-icon name="mail-outline"></ion-icon>
           </label>
@@ -63,7 +63,7 @@
           <button class="secondary-button" type="button" (click)="sendLoginOtp()" [disabled]="otpSending" *ngIf="!otpSent">
             {{ otpSending ? 'Sending...' : 'Send OTP' }}
           </button>
-          <label class="form-row input-row" *ngIf="otpSent">
+          <label class="form-row input-row auth-inline-row" *ngIf="otpSent">
             <span>
               <small>OTP</small>
               <input

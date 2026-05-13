@@ -407,6 +407,24 @@ ion-icon {
   min-width: 0;
 }
 
+.auth-card .auth-inline-row span {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 86px minmax(0, 1fr);
+  width: 100%;
+}
+
+.auth-card .auth-inline-row small {
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.auth-card .auth-inline-row input {
+  min-width: 0;
+  text-align: left;
+}
+
 .secondary-button {
   background: #eef3f8;
   border-radius: 14px;
