@@ -32,6 +32,30 @@ ion-toggle {
   width: 220px;
 }
 
+.loading-overlay {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.28);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  pointer-events: none;
+  position: fixed;
+  z-index: 9998;
+}
+
+.loading-icon {
+  animation: spin 0.8s linear infinite;
+  border: max(3px, 0.8vw) solid rgba(0, 31, 63, 0.16);
+  border-top-color: #001F3F;
+  border-radius: 999px;
+  height: 8vw;
+  max-height: 58px;
+  max-width: 58px;
+  min-height: 34px;
+  min-width: 34px;
+  width: 8vw;
+}
+
 *,
 *::before,
 *::after {
@@ -2164,6 +2188,10 @@ ion-icon {
   width: 6px;
 }
 
+.typing-indicator.mine {
+  justify-content: flex-end;
+}
+
 .chat-composer {
   align-items: center;
   background: #ffffff;
@@ -2300,6 +2328,10 @@ ion-icon {
   min-width: 0;
 }
 
+.conversation-card.unread {
+  border-color: #bfdbfe;
+}
+
 .conversation-card span,
 .conversation-card p,
 .conversation-card small {
@@ -2311,6 +2343,11 @@ ion-icon {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.conversation-card p.bold-preview {
+  color: #001F3F;
+  font-weight: 800;
 }
 
 .conversation-card aside {
@@ -3525,6 +3562,25 @@ ion-icon {
   font-size: 11px;
   justify-self: start;
   padding: 7px 10px;
+}
+
+.document-preview-actions {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+}
+
+.document-preview-actions a {
+  align-items: center;
+  background: #eef3f8;
+  border-radius: 12px;
+  color: #001F3F;
+  display: flex;
+  font-weight: 750;
+  justify-content: center;
+  min-height: 44px;
+  text-decoration: none;
 }
 
 .message-badge {

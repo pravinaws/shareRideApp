@@ -61,8 +61,20 @@ export class RideApiService {
     return this.http.get<ApiList<unknown>>(`${this.apiUrl}/messages/conversations`);
   }
 
+  getMessages(rideId: number) {
+    return this.http.get<ApiList<unknown>>(`${this.apiUrl}/messages/${rideId}`);
+  }
+
   sendMessage(payload: unknown) {
     return this.http.post(`${this.apiUrl}/messages`, payload);
+  }
+
+  sendTyping(payload: unknown) {
+    return this.http.post(`${this.apiUrl}/messages/typing`, payload);
+  }
+
+  markMessageSeen(messageId: number) {
+    return this.http.patch(`${this.apiUrl}/messages/${messageId}/seen`, {});
   }
 
   getNotifications() {
@@ -83,6 +95,10 @@ export class RideApiService {
 
   createPayment(payload: unknown) {
     return this.http.post(`${this.apiUrl}/payments`, payload);
+  }
+
+  verifyPayment(paymentId: number, payload: unknown) {
+    return this.http.post(`${this.apiUrl}/payments/${paymentId}/verify`, payload);
   }
 
   private toParams(filters: Record<string, string | number | boolean | undefined>) {

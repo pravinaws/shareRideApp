@@ -24,6 +24,8 @@ export class RealtimeService {
     this.source.addEventListener('vehicle.created', (event) => this.emit('vehicle.created', (event as MessageEvent).data));
     this.source.addEventListener('notification.created', (event) => this.emit('notification.created', (event as MessageEvent).data));
     this.source.addEventListener('message.created', (event) => this.emit('message.created', (event as MessageEvent).data));
+    this.source.addEventListener('message.typing', (event) => this.emit('message.typing', (event as MessageEvent).data));
+    this.source.addEventListener('booking.updated', (event) => this.emit('booking.updated', (event as MessageEvent).data));
   }
 
   disconnect() {

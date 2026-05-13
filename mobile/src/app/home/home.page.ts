@@ -672,6 +672,10 @@ export class HomePage {
     date: 'Today',
     dateValue: this.toDateInputValue(new Date()),
     seats: 2,
+    fromLat: 12.9716,
+    fromLng: 77.5946,
+    toLat: 12.2958,
+    toLng: 76.6394,
   };
   activeLocationField: LocationField | null = null;
   locationLoading: Record<LocationField, boolean> = {
@@ -803,7 +807,12 @@ export class HomePage {
   attachedFileType: 'image' | 'file' = 'file';
   attachedPreviewUrl = '';
   isTyping = false;
+  remoteTypingUser = '';
+  chatLoading = false;
+  walletProcessing = false;
+  appLoading = false;
   private typingTimer?: number;
+  private remoteTypingTimer?: number;
   settings = [
     'Saved payment methods',
     'Identity verification',
@@ -1326,6 +1335,8 @@ export class HomePage {
     this.restoreAuthenticatedSession();
     this.bindRealtimeEvents();
     this.loadProfile();
+    this.loadConversations();
+    this.loadPayments();
     this.router.events
       .pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd))
       .subscribe((event) => {
@@ -1350,13 +1361,15 @@ export class HomePage {
   }
 
   private finishNativeIntro() {
-    if (!Capacitor.isNativePlatform()) {
+    const hasSeenSplash = localStorage.getItem('rideshare.introSplashSeen') === 'true';
+    if (!Capacitor.isNativePlatform() || hasSeenSplash) {
       this.showIntroSplash = false;
       return;
     }
 
     window.setTimeout(() => {
       this.showIntroSplash = false;
+      localStorage.setItem('rideshare.introSplashSeen', 'true');
     }, 4000);
   }
 
@@ -1462,6 +1475,9 @@ export class HomePage {
       if (['/profile', '/vehicles', '/settings', '/payments', '/notifications'].includes(this.currentRoute)) {
         this.loadProfile();
       }
+      if (this.currentRoute === '/inbox') this.loadConversations();
+      if (this.currentRoute === '/chat') this.loadChatHistory();
+      if (this.currentRoute === '/payments') this.loadPayments();
       if (this.currentRoute === '/results' || this.currentRoute === '/search') {
         this.searchRides();
       }
@@ -1617,6 +1633,51 @@ export class HomePage {
           this.profileLoading = false;
         },
       });
+  }
+
+  loadConversations() {
+    if (!this.auth.isAuthenticated || this.auth.token === 'demo-token') return;
+    this.api.getConversations().subscribe({
+      next: (response: any) => {
+        const data = Array.isArray(response.data) ? response.data : [];
+        if (!data.length) return;
+        this.conversations = data.map((conversation: any) => {
+          const otherUser = conversation.other_user || {};
+          const latest = conversation.latest_message || {};
+          return {
+            rideId: conversation.ride_id,
+            receiverId: conversation.other_user_id,
+            name: otherUser.full_name || 'Ride contact',
+            image: otherUser.photo_url || this.avatarForName(otherUser.full_name || 'Ride contact'),
+            trip: `Ride #${conversation.ride_id}`,
+            last: latest.message || 'No messages yet',
+            time: latest.created_at ? new Date(latest.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+            unread: Number(conversation.unread_count || 0),
+            seen: Number(conversation.unread_count || 0) === 0,
+          };
+        });
+      },
+      error: () => undefined,
+    });
+  }
+
+  loadPayments() {
+    if (!this.auth.isAuthenticated || this.auth.token === 'demo-token') return;
+    this.api.getPayments().subscribe({
+      next: (response: any) => {
+        if (response.walletBalance !== undefined) this.walletBalance = Number(response.walletBalance || 0);
+        const data = Array.isArray(response.data) ? response.data : [];
+        if (data.length) {
+          this.transactions = data.map((payment: any) => ({
+            title: payment.provider === 'razorpay' ? 'Razorpay wallet top-up' : 'Wallet transaction',
+            amount: `${payment.status === 'paid' ? '+' : ''} INR ${Number(payment.amount || 0)}`,
+            status: payment.status,
+            date: payment.created_at ? new Date(payment.created_at).toLocaleDateString() : 'Today',
+          }));
+        }
+      },
+      error: () => undefined,
+    });
   }
 
   saveProfile(options: { silent?: boolean } = {}) {
@@ -2025,7 +2086,7 @@ export class HomePage {
       return;
     }
 
-    this.api.bookRide({ rideId: 1, seats: 1 }).subscribe({
+    this.api.bookRide({ rideId: ride.id || 1, seats: 1 }).subscribe({
       next: () => {
         this.viewRide(ride);
         this.addCurrentPassengerToSelectedRide();
@@ -2044,6 +2105,49 @@ export class HomePage {
   messageDriver() {
     this.presentToast(`Opening chat with ${this.selectedRide.driver}`);
     this.goTo('/chat');
+    this.loadChatHistory();
+  }
+
+  openConversation(conversation: any) {
+    this.selectedRide = {
+      ...this.selectedRide,
+      id: conversation.rideId || this.selectedRide.id || 1,
+      driverId: conversation.receiverId || this.selectedRide.driverId || 2,
+      driver: conversation.name || this.selectedRide.driver,
+      owner: conversation.name || this.selectedRide.owner,
+      photo: conversation.image || this.selectedRide.photo,
+    };
+    conversation.unread = 0;
+    conversation.seen = true;
+    this.goTo('/chat');
+    this.loadChatHistory();
+  }
+
+  loadChatHistory() {
+    if (!this.auth.isAuthenticated || this.auth.token === 'demo-token') return;
+    this.chatLoading = true;
+    this.api.getMessages(this.selectedRide.id || 1).subscribe({
+      next: (response: any) => {
+        this.chatLoading = false;
+        const currentUserId = this.auth.user?.user_id;
+        const messages = Array.isArray(response.data) ? response.data : [];
+        this.chats = messages.map((message: any) => ({
+          id: message.message_id,
+          from: message.sender_id === currentUserId ? 'me' : 'driver',
+          text: message.message,
+          time: message.created_at ? new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+          attachment: message.attachment_url ? 'Attachment' : undefined,
+          attachmentType: message.attachment_url?.startsWith('data:image/') ? 'image' : undefined,
+          previewUrl: message.attachment_url?.startsWith('data:image/') ? message.attachment_url : undefined,
+        }));
+        messages
+          .filter((message: any) => message.receiver_id === currentUserId && !message.is_seen)
+          .forEach((message: any) => this.api.markMessageSeen(message.message_id).subscribe({ error: () => undefined }));
+      },
+      error: () => {
+        this.chatLoading = false;
+      },
+    });
   }
 
   attachChatFile(event: Event) {
@@ -2109,7 +2213,8 @@ export class HomePage {
       })
       .subscribe({
         next: () => {
-          this.liveActivity = 'Message delivered · realtime event sent';
+          this.liveActivity = 'Message delivered - realtime event sent';
+          this.loadConversations();
         },
         error: () => {
           this.liveActivity = 'Message saved locally · backend not connected';
@@ -2122,6 +2227,13 @@ export class HomePage {
     this.isTyping = Boolean(value.trim());
     if (this.typingTimer) window.clearTimeout(this.typingTimer);
     this.typingTimer = window.setTimeout(() => this.clearTypingState(), 1500);
+    const currentUserId = this.auth.user?.user_id || 1;
+    const receiverId = this.selectedRide.driverId && this.selectedRide.driverId !== currentUserId ? this.selectedRide.driverId : 2;
+    if (this.auth.isAuthenticated && this.auth.token !== 'demo-token') {
+      this.api
+        .sendTyping({ rideId: this.selectedRide.id || 1, receiverId, isTyping: Boolean(value.trim()) })
+        .subscribe({ error: () => undefined });
+    }
   }
 
   private clearTypingState() {
@@ -2143,20 +2255,94 @@ export class HomePage {
       return;
     }
 
-    this.walletBalance += amount;
-    this.transactions = [
-      { title: 'Wallet money added', amount: `+ INR ${amount}`, status: 'Payment success', date: 'Now' },
-      ...this.transactions,
-    ];
-    this.presentToast(`INR ${amount} added to wallet`);
-
-    if (this.auth.isAuthenticated && this.auth.token !== 'demo-token') {
-      this.api.createPayment({ bookingId: 0, amount, provider: 'wallet_topup' }).subscribe({
-        error: () => {
-          this.liveActivity = 'Wallet top-up saved locally Â· backend not connected';
-        },
-      });
+    if (!this.auth.isAuthenticated || this.auth.token === 'demo-token') {
+      this.presentToast('Login is required for Razorpay wallet top-up');
+      return;
     }
+
+    this.walletProcessing = true;
+    this.appLoading = true;
+    this.api.createPayment({ bookingId: 0, amount, provider: 'razorpay' }).subscribe({
+      next: (response: any) => this.openRazorpayCheckout(response.payment, response.razorpay),
+      error: (error) => {
+        this.walletProcessing = false;
+        this.appLoading = false;
+        this.presentToast(error?.error?.error || 'Unable to start Razorpay payment');
+      },
+    });
+  }
+
+  private async openRazorpayCheckout(payment: any, razorpay: any) {
+    if (!razorpay?.keyId) {
+      this.walletProcessing = false;
+      this.appLoading = false;
+      this.transactions = [
+        { title: 'Razorpay wallet top-up', amount: `INR ${payment.amount}`, status: 'pending', date: 'Now' },
+        ...this.transactions,
+      ];
+      this.presentToast('Razorpay key is not configured on AWS. Balance not updated.');
+      return;
+    }
+
+    const loaded = await this.loadRazorpayScript();
+    if (!loaded || !(window as any).Razorpay) {
+      this.walletProcessing = false;
+      this.appLoading = false;
+      this.presentToast('Razorpay checkout could not be loaded');
+      return;
+    }
+
+    const checkout = new (window as any).Razorpay({
+      key: razorpay.keyId,
+      amount: razorpay.amount,
+      currency: 'INR',
+      name: razorpay.name,
+      description: razorpay.description,
+      order_id: razorpay.orderId,
+      prefill: {
+        name: this.profile.fullName,
+        contact: this.profile.phone,
+        email: this.profile.email,
+      },
+      handler: (result: any) => this.verifyRazorpayPayment(payment.payment_id, result.razorpay_payment_id),
+      modal: {
+        ondismiss: () => {
+          this.walletProcessing = false;
+          this.appLoading = false;
+          this.presentToast('Payment cancelled. Wallet not updated.');
+          this.api.verifyPayment(payment.payment_id, { status: 'cancelled' }).subscribe({ error: () => undefined });
+        },
+      },
+    });
+    checkout.open();
+  }
+
+  private verifyRazorpayPayment(paymentId: number, razorpayPaymentId: string) {
+    this.api.verifyPayment(paymentId, { status: 'success', razorpayPaymentId }).subscribe({
+      next: (response: any) => {
+        this.walletProcessing = false;
+        this.appLoading = false;
+        this.walletBalance = Number(response.walletBalance || this.walletBalance);
+        this.loadPayments();
+        this.presentToast('Payment successful. Wallet updated.');
+      },
+      error: (error) => {
+        this.walletProcessing = false;
+        this.appLoading = false;
+        this.presentToast(error?.error?.error || 'Payment verification failed');
+      },
+    });
+  }
+
+  private loadRazorpayScript() {
+    return new Promise<boolean>((resolve) => {
+      if ((window as any).Razorpay) return resolve(true);
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
   }
 
   deleteChatMessage(messageId: number) {
@@ -2945,8 +3131,17 @@ export class HomePage {
 
   private bindRealtimeEvents() {
     this.realtime.events$.subscribe((event) => {
-      this.liveActivity = `Realtime event · ${event.type}`;
+      this.liveActivity = `Realtime event - ${event.type}`;
       const payload: any = event.payload;
+      if (event.type === 'message.created' && payload?.message) {
+        this.applyRealtimeMessage(payload.message);
+      }
+      if (event.type === 'message.typing') {
+        this.applyRemoteTyping(payload);
+      }
+      if (event.type === 'booking.updated') {
+        this.presentToast(payload?.notification?.message || 'Ride booking updated');
+      }
       const notification = payload?.notification || payload;
       if (notification?.title && notification?.message) {
         this.notificationCenter = [
@@ -2964,6 +3159,38 @@ export class HomePage {
         this.saveRealtimeState();
       }
     });
+  }
+
+  private applyRealtimeMessage(message: any) {
+    const currentUserId = this.auth.user?.user_id;
+    if (Number(message.ride_id) === Number(this.selectedRide.id || 1)) {
+      const exists = this.chats.some((chat) => Number(chat.id) === Number(message.message_id));
+      if (!exists) {
+        this.chats = [
+          ...this.chats,
+          {
+            id: message.message_id,
+            from: message.sender_id === currentUserId ? 'me' : 'driver',
+            text: message.message,
+            time: message.created_at ? new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Now',
+            attachment: message.attachment_url ? 'Attachment' : undefined,
+            attachmentType: message.attachment_url?.startsWith('data:image/') ? 'image' : undefined,
+            previewUrl: message.attachment_url?.startsWith('data:image/') ? message.attachment_url : undefined,
+          },
+        ];
+      }
+    }
+    this.loadConversations();
+  }
+
+  private applyRemoteTyping(payload: any) {
+    if (Number(payload?.ride_id) !== Number(this.selectedRide.id || 1) || !payload?.is_typing) return;
+    this.remoteTypingUser = this.selectedRide.driver;
+    if (this.remoteTypingTimer) window.clearTimeout(this.remoteTypingTimer);
+    this.remoteTypingTimer = window.setTimeout(() => {
+      this.remoteTypingUser = '';
+      this.remoteTypingTimer = undefined;
+    }, 1800);
   }
 
   setRideTab(tab: string) {
@@ -3381,6 +3608,13 @@ export class HomePage {
 
   selectLocation(field: LocationField, suggestion: LocationSuggestion) {
     this.search[field] = suggestion.title;
+    if (field === 'from') {
+      this.search.fromLat = suggestion.lat || this.search.fromLat;
+      this.search.fromLng = suggestion.lng || this.search.fromLng;
+    } else {
+      this.search.toLat = suggestion.lat || this.search.toLat;
+      this.search.toLng = suggestion.lng || this.search.toLng;
+    }
     this.activeLocationField = null;
     this.locationError[field] = '';
     this.locationSuggestions[field] = [];
@@ -3523,8 +3757,9 @@ export class HomePage {
   }
 
   private buildRouteMapUrl(pickup: string, drop: string): SafeResourceUrl {
-    const routeQuery = encodeURIComponent(`${pickup} near ${drop}`);
-    return this.sanitizer.bypassSecurityTrustResourceUrl(`https://maps.google.com/maps?q=${routeQuery}&z=12&output=embed`);
+    return this.sanitizer.bypassSecurityTrustResourceUrl(
+      `https://maps.google.com/maps?output=embed&saddr=${encodeURIComponent(pickup)}&daddr=${encodeURIComponent(drop)}&dirflg=d`,
+    );
   }
 
   get mapFallbackUrl() {
@@ -3638,9 +3873,11 @@ export class HomePage {
 
   async searchRides() {
     this.searchState = 'loading';
+    this.appLoading = true;
     await this.presentToast('Searching verified rides near you');
     if (!this.search.from || !this.search.to || this.search.seats < 1) {
       this.searchState = 'error';
+      this.appLoading = false;
       this.presentToast('Enter route and passengers');
       return;
     }
@@ -3652,6 +3889,10 @@ export class HomePage {
       .getRides({
         origin: this.search.from,
         destination: this.search.to,
+        originLat: this.search.fromLat,
+        originLng: this.search.fromLng,
+        destinationLat: this.search.toLat,
+        destinationLng: this.search.toLng,
         date: this.search.dateValue,
         instant: this.filters.find((filter) => filter.key === 'instant')?.active,
         verified: this.filters.find((filter) => filter.key === 'verified')?.active,
@@ -3659,6 +3900,7 @@ export class HomePage {
       .subscribe({
         next: (response) => {
           this.searchState = 'ready';
+          this.appLoading = false;
           if (response.data.length) {
             const backendRides = response.data.map((ride: any, index: number) => {
               const templateRide = nearbyResults[index % nearbyResults.length];
@@ -3694,6 +3936,7 @@ export class HomePage {
           this.goTo('/results');
         },
         error: () => {
+          this.appLoading = false;
           this.searchState = this.search.to.toLowerCase().includes('nowhere') ? 'empty' : 'ready';
           if (this.searchState === 'ready') {
             this.goTo('/results');
@@ -3722,6 +3965,10 @@ export class HomePage {
       date: recent.date,
       dateValue: this.search.dateValue,
       seats: recent.passengers,
+      fromLat: this.search.fromLat,
+      fromLng: this.search.fromLng,
+      toLat: this.search.toLat,
+      toLng: this.search.toLng,
     };
     this.searchRides();
   }
