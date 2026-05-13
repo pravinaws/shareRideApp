@@ -67,7 +67,7 @@ export class AuthService {
   }
 
   sendOtp(phone: string) {
-    return this.post<{ message: string; mode: string; demoOtp?: string }>('/auth/send-otp', {
+    return this.post<{ message: string; mode: string }>('/auth/send-otp', {
       phone,
       channel: 'whatsapp',
     });
@@ -79,14 +79,6 @@ export class AuthService {
         localStorage.setItem(this.tokenKey, session.token);
         localStorage.setItem(this.userKey, JSON.stringify(session.user));
       }),
-    );
-  }
-
-  setDemoSession() {
-    localStorage.setItem(this.tokenKey, 'demo-token');
-    localStorage.setItem(
-      this.userKey,
-      JSON.stringify({ user_id: 1, full_name: 'Harshala', role: 'driver', verification_status: 'verified' }),
     );
   }
 

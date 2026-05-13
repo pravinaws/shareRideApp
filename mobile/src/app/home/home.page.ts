@@ -1330,8 +1330,7 @@ export class HomePage {
       walletOutline,
     });
 
-    this.restoreRealtimeState();
-    this.restoreProfilePhoto();
+    this.clearLegacyLocalAppData();
     this.restoreAuthenticatedSession();
     this.bindRealtimeEvents();
     this.loadProfile();
@@ -1361,15 +1360,13 @@ export class HomePage {
   }
 
   private finishNativeIntro() {
-    const hasSeenSplash = localStorage.getItem('rideshare.introSplashSeen') === 'true';
-    if (!Capacitor.isNativePlatform() || hasSeenSplash) {
+    if (!Capacitor.isNativePlatform()) {
       this.showIntroSplash = false;
       return;
     }
 
     window.setTimeout(() => {
       this.showIntroSplash = false;
-      localStorage.setItem('rideshare.introSplashSeen', 'true');
     }, 4000);
   }
 
@@ -1401,24 +1398,15 @@ export class HomePage {
     }
   }
 
-  private restoreProfilePhoto() {
-    const savedPhotoUrl = localStorage.getItem('rideshare.profilePhotoUrl');
-    if (savedPhotoUrl) {
-      this.profile.photoUrl = savedPhotoUrl;
-    }
-
-    const savedVerification = localStorage.getItem('rideshare.passengerVerification');
-    if (!savedVerification) return;
-
-    try {
-      const verification = JSON.parse(savedVerification);
-      this.profile.govIdNumber = verification.govIdNumber || this.profile.govIdNumber;
-      this.profile.govIdFrontUrl = verification.govIdFrontUrl || this.profile.govIdFrontUrl;
-      this.profile.govIdBackUrl = verification.govIdBackUrl || this.profile.govIdBackUrl;
-      this.profile.passengerVerificationStatus = verification.passengerVerificationStatus || this.profile.passengerVerificationStatus;
-    } catch {
-      localStorage.removeItem('rideshare.passengerVerification');
-    }
+  private clearLegacyLocalAppData() {
+    [
+      'rideshare.profilePhotoUrl',
+      'rideshare.passengerVerification',
+      'rideshare.vehicles',
+      'rideshare.notifications',
+      'rideshare.unreadCount',
+      'rideshare.introSplashSeen',
+    ].forEach((key) => localStorage.removeItem(key));
   }
 
   get publishFlowStepFromRoute() {
@@ -1681,7 +1669,6 @@ export class HomePage {
   }
 
   saveProfile(options: { silent?: boolean } = {}) {
-    localStorage.setItem('rideshare.profilePhotoUrl', this.profile.photoUrl);
     if (!this.auth.isAuthenticated || this.auth.token === 'demo-token') {
       if (!options.silent) this.presentToast('Profile photo updated');
       return;
@@ -1721,7 +1708,6 @@ export class HomePage {
     const reader = new FileReader();
     reader.onload = () => {
       this.profile.photoUrl = String(reader.result || this.profile.photoUrl);
-      localStorage.setItem('rideshare.profilePhotoUrl', this.profile.photoUrl);
       this.saveProfile({ silent: true });
       this.presentToast('Profile photo updated');
     };
@@ -1748,7 +1734,7 @@ export class HomePage {
         this.profile.govIdBackUrl = imageUrl;
       }
       this.profile.passengerVerificationStatus = 'pending';
-      this.persistProfileVerification();
+      this.saveProfile({ silent: true });
     };
     reader.readAsDataURL(file);
   }
@@ -1761,7 +1747,6 @@ export class HomePage {
     }
 
     this.profile.passengerVerificationStatus = 'verified';
-    this.persistProfileVerification();
     this.notificationCenter = [
       {
         type: 'Passenger verification',
@@ -1777,18 +1762,6 @@ export class HomePage {
     this.saveRealtimeState();
     this.saveProfile();
     this.presentToast('Passenger verification completed');
-  }
-
-  private persistProfileVerification() {
-    localStorage.setItem(
-      'rideshare.passengerVerification',
-      JSON.stringify({
-        govIdNumber: this.profile.govIdNumber,
-        govIdFrontUrl: this.profile.govIdFrontUrl,
-        govIdBackUrl: this.profile.govIdBackUrl,
-        passengerVerificationStatus: this.profile.passengerVerificationStatus,
-      }),
-    );
   }
 
   get currentUserAvatar(): string {
@@ -1926,12 +1899,6 @@ export class HomePage {
         this.otpSent = true;
         this.otpSending = false;
         this.startOtpResendTimer();
-        if (response.demoOtp) {
-          this.liveActivity = `Test OTP sent: ${response.demoOtp}`;
-          this.presentToast(`Test OTP sent: ${response.demoOtp}`);
-          return;
-        }
-
         this.liveActivity = 'WhatsApp OTP sent. Check your phone.';
         this.presentToast('WhatsApp OTP sent');
       },
@@ -3084,49 +3051,11 @@ export class HomePage {
   }
 
   private restoreRealtimeState() {
-    const savedVehicles = localStorage.getItem('rideshare.vehicles');
-    const savedNotifications = localStorage.getItem('rideshare.notifications');
-    const savedUnreadCount = localStorage.getItem('rideshare.unreadCount');
-
-    try {
-      if (savedVehicles) {
-        const parsedVehicles = JSON.parse(savedVehicles);
-        this.vehicles = Array.isArray(parsedVehicles)
-          ? parsedVehicles.map((vehicle: Partial<ProfileVehicle>) => ({
-              make: vehicle.make || 'Vehicle',
-              model: vehicle.model || '',
-              color: vehicle.color || 'Not set',
-              vehicleId: vehicle.vehicleId,
-              plateNumber: vehicle.plateNumber || 'Plate pending',
-              seats: Number(vehicle.seats || 4),
-              status: this.normalizedVehicleStatus(vehicle),
-              rcDocumentUrl: vehicle.rcDocumentUrl || '',
-              insuranceDocumentUrl: vehicle.insuranceDocumentUrl || '',
-              frontPhotoUrl: vehicle.frontPhotoUrl || '',
-              backPhotoUrl: vehicle.backPhotoUrl || '',
-            }))
-          : this.vehicles;
-      }
-
-      if (savedNotifications) {
-        const parsedNotifications = JSON.parse(savedNotifications);
-        if (Array.isArray(parsedNotifications)) this.notificationCenter = parsedNotifications;
-      }
-
-      if (savedUnreadCount) {
-        this.unreadCount = Number(savedUnreadCount) || 0;
-      }
-    } catch {
-      localStorage.removeItem('rideshare.vehicles');
-      localStorage.removeItem('rideshare.notifications');
-      localStorage.removeItem('rideshare.unreadCount');
-    }
+    this.clearLegacyLocalAppData();
   }
 
   private saveRealtimeState() {
-    localStorage.setItem('rideshare.vehicles', JSON.stringify(this.vehicles));
-    localStorage.setItem('rideshare.notifications', JSON.stringify(this.notificationCenter));
-    localStorage.setItem('rideshare.unreadCount', String(this.unreadCount));
+    // App data is API/database-owned. Only the auth session is cached locally.
   }
 
   private bindRealtimeEvents() {
