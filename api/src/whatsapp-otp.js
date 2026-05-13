@@ -121,13 +121,12 @@ export async function sendWhatsAppOtp(phone) {
     (config.mode === 'verify' && !config.serviceSid) ||
     (config.mode !== 'verify' && !config.whatsappNumber)
   ) {
-    const demoOtp = localOtpFor(normalizedPhone);
+    localOtpFor(normalizedPhone);
     return {
       mode: 'local',
       phone: normalizedPhone,
       status: 'pending',
-      demoOtp,
-      message: 'Local OTP generated and saved in memory. Configure Twilio Verify env vars for WhatsApp delivery.',
+      message: 'OTP generated. Configure Twilio Verify env vars for WhatsApp delivery.',
     };
   }
 
@@ -178,7 +177,6 @@ export async function sendWhatsAppOtp(phone) {
     status: message.status || 'queued',
     channel: 'whatsapp',
     message: 'WhatsApp OTP sent using Twilio Sandbox',
-    demoOtp: process.env.NODE_ENV === 'production' ? undefined : otp,
   };
 }
 

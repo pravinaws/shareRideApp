@@ -121,13 +121,12 @@ export async function sendWhatsAppOtp(phone) {
     (config.mode === 'verify' && !config.serviceSid) ||
     (config.mode !== 'verify' && !config.whatsappNumber)
   ) {
-    const demoOtp = localOtpFor(normalizedPhone);
+    localOtpFor(normalizedPhone);
     return {
       mode: 'local',
       phone: normalizedPhone,
       status: 'pending',
-      demoOtp,
-      message: 'Local OTP generated and saved in memory. Configure Twilio Verify env vars for WhatsApp delivery.',
+      message: 'OTP generated. Configure Twilio Verify env vars for WhatsApp delivery.',
     };
   }
 
@@ -178,15 +177,28 @@ export async function sendWhatsAppOtp(phone) {
     status: message.status || 'queued',
     channel: 'whatsapp',
     message: 'WhatsApp OTP sent using Twilio Sandbox',
-    demoOtp: process.env.NODE_ENV === 'production' ? undefined : otp,
   };
 }
 
 async function verifyWithTwilioVerify(config, normalizedPhone, code) {
-  const check = await twilioVerifyRequest(`/Services/${config.serviceSid}/VerificationCheck`, {
-    To: normalizedPhone,
-    Code: code,
-  });
+  let check;
+  try {
+    check = await twilioVerifyRequest(`/Services/${config.serviceSid}/VerificationCheck`, {
+      To: normalizedPhone,
+      Code: code,
+    });
+  } catch (error) {
+    if (error.status === 404 || error.details?.code === 20404) {
+      return {
+        ok: false,
+        status: 'expired',
+        mode: 'twilio_verify',
+        message: 'OTP expired or already used. Please request a new WhatsApp OTP.',
+      };
+    }
+
+    throw error;
+  }
 
   return {
     ok: check.status === 'approved',
@@ -194,6 +206,7 @@ async function verifyWithTwilioVerify(config, normalizedPhone, code) {
     mode: 'twilio_verify',
     sid: check.sid,
     channel: check.channel || config.channel,
+    message: check.status === 'approved' ? 'OTP verified' : 'Invalid OTP',
   };
 }
 
