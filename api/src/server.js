@@ -122,6 +122,8 @@ app.post('/api/auth/login', async (req, res, next) => {
 
   try {
     const normalizedPhone = normalizePhone(req.body.phone);
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const fullName = String(req.body.fullName || '').trim();
     const verification = await verifyWhatsAppOtp(normalizedPhone, req.body.otp);
     if (!verification.ok) {
       return res.status(422).json({ error: verification.message || 'Invalid OTP', verification });
@@ -129,11 +131,14 @@ app.post('/api/auth/login', async (req, res, next) => {
 
     let user = store.users.find((candidate) => normalizePhone(candidate.phone) === normalizedPhone);
     const isNewUser = !user;
+    if (isNewUser && (!email || !email.includes('@'))) {
+      return res.status(422).json({ error: 'Email is required for signup notifications' });
+    }
     if (!user) {
       user = {
         user_id: nextId(store.users, 'user_id'),
-        full_name: req.body.fullName || 'New Rider',
-        email: req.body.email || `user${Date.now()}@example.com`,
+        full_name: fullName || 'New Rider',
+        email,
         phone: normalizedPhone,
         age: null,
         bio: '',
@@ -153,7 +158,7 @@ app.post('/api/auth/login', async (req, res, next) => {
       store.users.push(user);
     } else {
       user.phone = normalizedPhone;
-      if (req.body.email && !user.email) user.email = req.body.email;
+      if (email && !user.email) user.email = email;
       user.role = req.body.role || user.role;
       user.verification_status = user.verification_status === 'verified' ? 'verified' : 'phone_verified';
       user.updated_at = new Date().toISOString();
