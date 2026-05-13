@@ -66,15 +66,16 @@ export class AuthService {
     );
   }
 
-  sendOtp(phone: string) {
-    return this.post<{ message: string; mode: string }>('/auth/send-otp', {
+  sendOtp(phone: string, email?: string) {
+    return this.post<{ message: string; mode: string; testOtp?: string }>('/auth/send-otp', {
       phone,
+      email,
       channel: 'whatsapp',
     });
   }
 
-  login(phone: string, otp: string, role = 'driver', fullName?: string) {
-    return this.post<{ token: string; user: SessionUser }>('/auth/login', { phone, otp, role, fullName }).pipe(
+  login(phone: string, otp: string, role = 'driver', fullName?: string, email?: string) {
+    return this.post<{ token: string; user: SessionUser }>('/auth/login', { phone, otp, role, fullName, email }).pipe(
       tap((session) => {
         localStorage.setItem(this.tokenKey, session.token);
         localStorage.setItem(this.userKey, JSON.stringify(session.user));
