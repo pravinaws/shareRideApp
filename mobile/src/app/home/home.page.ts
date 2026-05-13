@@ -310,6 +310,7 @@ export class HomePage {
   loginSubmitting = false;
   loginForm = {
     fullName: 'Harshala',
+    email: '',
     phone: '9970795914',
     otp: '',
     role: 'driver' as 'passenger' | 'driver',
@@ -1894,11 +1895,17 @@ export class HomePage {
 
     this.otpSending = true;
     this.liveActivity = 'Sending WhatsApp OTP...';
-    this.auth.sendOtp(this.loginForm.phone).subscribe({
+    this.auth.sendOtp(this.loginForm.phone, this.authMode === 'signup' ? this.loginForm.email : undefined).subscribe({
       next: (response) => {
         this.otpSent = true;
         this.otpSending = false;
         this.startOtpResendTimer();
+        if (response.testOtp) {
+          this.loginForm.otp = response.testOtp;
+          this.liveActivity = `Testing OTP: ${response.testOtp}`;
+          this.presentToast(`Testing OTP: ${response.testOtp}`);
+          return;
+        }
         this.liveActivity = 'WhatsApp OTP sent. Check your phone.';
         this.presentToast('WhatsApp OTP sent');
       },
@@ -1956,7 +1963,7 @@ export class HomePage {
 
     this.loginSubmitting = true;
     this.liveActivity = 'Verifying OTP...';
-    this.auth.login(this.loginForm.phone, this.loginForm.otp, this.loginForm.role, this.loginForm.fullName).subscribe({
+    this.auth.login(this.loginForm.phone, this.loginForm.otp, this.loginForm.role, this.loginForm.fullName, this.loginForm.email).subscribe({
       next: () => {
         this.loginSubmitting = false;
         this.isLoggedIn = true;

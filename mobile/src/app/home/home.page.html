@@ -29,6 +29,13 @@
             </span>
             <ion-icon name="person-circle-outline"></ion-icon>
           </label>
+          <label class="form-row input-row" *ngIf="authMode === 'signup'">
+            <span>
+              <small>Email</small>
+              <input [(ngModel)]="loginForm.email" aria-label="Email" autocomplete="email" inputmode="email" />
+            </span>
+            <ion-icon name="mail-outline"></ion-icon>
+          </label>
           <label class="form-row input-row phone-row" *ngIf="!otpSent">
             <strong class="country-code">+91</strong>
             <span class="phone-input-wrap">

@@ -5,15 +5,17 @@ const otpTtlMs = Number(process.env.OTP_TTL_SECONDS || 600) * 1000;
 
 function twilioConfig() {
   return {
-    accountSid: process.env.TWILIO_ACCOUNT_SID,
-    authToken: process.env.TWILIO_AUTH_TOKEN,
-    serviceSid: process.env.TWILIO_VERIFY_SERVICE_SID,
-    whatsappNumber: process.env.TWILIO_WHATSAPP_NUMBER,
-    contentSid: process.env.TWILIO_CONTENT_SID,
+    accountSid: String(process.env.TWILIO_ACCOUNT_SID || '').trim(),
+    authToken: String(process.env.TWILIO_AUTH_TOKEN || '').trim(),
+    serviceSid: String(process.env.TWILIO_VERIFY_SERVICE_SID || '').trim(),
+    whatsappNumber: String(process.env.TWILIO_WHATSAPP_NUMBER || '').trim(),
+    contentSid: String(process.env.TWILIO_CONTENT_SID || '').trim(),
     contentVariables: process.env.TWILIO_CONTENT_VARIABLES,
-    channel: process.env.TWILIO_VERIFY_CHANNEL || 'whatsapp',
-    mode: process.env.TWILIO_OTP_MODE || 'messages',
+    channel: String(process.env.TWILIO_VERIFY_CHANNEL || 'whatsapp').trim(),
+    mode: String(process.env.TWILIO_OTP_MODE || 'messages').trim(),
     mock: process.env.TWILIO_MOCK_OTP === 'true',
+    bypass: process.env.OTP_BYPASS_ENABLED === 'true',
+    bypassCode: String(process.env.OTP_BYPASS_CODE || '').trim(),
   };
 }
 
@@ -27,8 +29,8 @@ export function normalizePhone(phone) {
   return '';
 }
 
-function localOtpFor(phone) {
-  const otp = String(randomInt(100000, 999999));
+function localOtpFor(phone, forcedOtp) {
+  const otp = forcedOtp || String(randomInt(100000, 999999));
   otpSessions.set(phone, {
     otp,
     expiresAt: Date.now() + otpTtlMs,
@@ -115,18 +117,23 @@ export async function sendWhatsAppOtp(phone) {
   }
 
   if (
+    config.bypass ||
     config.mock ||
     !config.accountSid ||
     !config.authToken ||
     (config.mode === 'verify' && !config.serviceSid) ||
     (config.mode !== 'verify' && !config.whatsappNumber)
   ) {
-    localOtpFor(normalizedPhone);
+    const otp = localOtpFor(normalizedPhone, config.bypassCode || undefined);
     return {
-      mode: 'local',
+      mode: config.bypass ? 'bypass' : 'local',
       phone: normalizedPhone,
       status: 'pending',
-      message: 'OTP generated. Configure Twilio Verify env vars for WhatsApp delivery.',
+      message: config.bypass
+        ? 'Testing OTP generated. Disable OTP_BYPASS_ENABLED to use Twilio.'
+        : 'OTP generated. Configure Twilio Verify env vars for WhatsApp delivery.',
+      otp,
+      exposeOtp: config.bypass,
     };
   }
 
@@ -177,6 +184,7 @@ export async function sendWhatsAppOtp(phone) {
     status: message.status || 'queued',
     channel: 'whatsapp',
     message: 'WhatsApp OTP sent using Twilio Sandbox',
+    otp,
   };
 }
 
@@ -219,7 +227,7 @@ export async function verifyWhatsAppOtp(phone, otp) {
     return { ok: false, status: 'invalid', message: 'Enter a valid 10 digit mobile number and OTP' };
   }
 
-  if (!config.mock && config.mode === 'verify' && config.accountSid && config.authToken && config.serviceSid) {
+  if (!config.bypass && !config.mock && config.mode === 'verify' && config.accountSid && config.authToken && config.serviceSid) {
     return verifyWithTwilioVerify(config, normalizedPhone, code);
   }
 
@@ -242,6 +250,10 @@ export async function verifyWhatsAppOtp(phone, otp) {
     }
 
     otpSessions.delete(normalizedPhone);
-    return { ok: true, status: 'approved', mode: config.mode === 'messages' ? 'twilio_messages' : 'local' };
+    return {
+      ok: true,
+      status: 'approved',
+      mode: config.bypass ? 'bypass' : config.mode === 'messages' ? 'twilio_messages' : 'local',
+    };
   }
 }

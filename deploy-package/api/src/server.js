@@ -8,6 +8,7 @@ import { buildNotificationPayload, driverNotificationFlows, passengerNotificatio
 import { sendPush } from './push.js';
 import { addRealtimeClient, publishRealtime } from './realtime.js';
 import { addNotification, nextId, paginate, persistStore, publicUser, store } from './store.js';
+import { sendEmailNotification } from './email-notifier.js';
 import { sendWhatsAppNotification } from './whatsapp-notifier.js';
 import { normalizePhone, sendWhatsAppOtp, verifyWhatsAppOtp } from './whatsapp-otp.js';
 
@@ -75,6 +76,23 @@ function notifyUserMobile(userId, title, message, variables) {
   sendWhatsAppNotification({ phone: user?.phone, title, message, variables }).catch((error) => {
     console.error(`WhatsApp notification failed for user ${userId}: ${error.message}`);
   });
+  sendEmailNotification({ to: user?.email, subject: title, message }).catch((error) => {
+    console.error(`Email notification failed for user ${userId}: ${error.message}`);
+  });
+}
+
+function sendOtpEmail({ phone, email, otp }) {
+  if (!otp) return;
+  const normalizedPhone = normalizePhone(phone);
+  const existingUser = store.users.find((candidate) => normalizePhone(candidate.phone) === normalizedPhone);
+  const recipient = email || existingUser?.email;
+  sendEmailNotification({
+    to: recipient,
+    subject: 'Your shareMILES OTP',
+    message: `Your shareMILES OTP is ${otp}. It expires in ${Math.round(Number(process.env.OTP_TTL_SECONDS || 600) / 60)} minutes.`,
+  }).catch((error) => {
+    console.error(`OTP email notification failed for ${normalizedPhone}: ${error.message}`);
+  });
 }
 
 app.get('/api/health', (_req, res) => {
@@ -90,7 +108,9 @@ app.post('/api/auth/send-otp', async (req, res, next) => {
 
   try {
     const result = await sendWhatsAppOtp(req.body.phone);
-    res.json({ ok: true, ...result });
+    sendOtpEmail({ phone: req.body.phone, email: req.body.email, otp: result.otp });
+    const { otp, exposeOtp, ...publicResult } = result;
+    res.json({ ok: true, ...publicResult, ...(exposeOtp ? { testOtp: otp } : {}) });
   } catch (error) {
     next(error);
   }
@@ -108,6 +128,7 @@ app.post('/api/auth/login', async (req, res, next) => {
     }
 
     let user = store.users.find((candidate) => normalizePhone(candidate.phone) === normalizedPhone);
+    const isNewUser = !user;
     if (!user) {
       user = {
         user_id: nextId(store.users, 'user_id'),
@@ -132,11 +153,18 @@ app.post('/api/auth/login', async (req, res, next) => {
       store.users.push(user);
     } else {
       user.phone = normalizedPhone;
+      if (req.body.email && !user.email) user.email = req.body.email;
       user.role = req.body.role || user.role;
       user.verification_status = user.verification_status === 'verified' ? 'verified' : 'phone_verified';
       user.updated_at = new Date().toISOString();
     }
 
+    persistStore();
+    notifyUserMobile(
+      user.user_id,
+      isNewUser ? 'Signup successful' : 'Login successful',
+      isNewUser ? 'Your shareMILES account has been created.' : 'Your shareMILES account was logged in.',
+    );
     res.json({ ok: true, token: createToken(user), user, verification });
   } catch (error) {
     next(error);
@@ -359,6 +387,7 @@ app.patch('/api/bookings/:bookingId', requireAuth, (req, res) => {
   });
   publishRealtime(booking.passenger_id, 'booking.updated', { booking, ride, notification: passengerNotification });
   publishRealtime(ride?.driver_id, 'booking.updated', { booking, ride });
+  notifyUserMobile(booking.passenger_id, passengerNotification.title, passengerNotification.message);
   persistStore();
   res.json({ ok: true, booking });
 });
@@ -590,11 +619,37 @@ app.patch('/api/admin/users/:userId', requireAuth, requireRole('admin'), (req, r
   const user = store.users.find((item) => item.user_id === asNumber(req.params.userId));
   if (!user) return res.status(404).json({ error: 'User not found' });
 
+  const previous = {
+    status: user.status,
+    verification_status: user.verification_status,
+    passenger_verification_status: user.passenger_verification_status,
+  };
   ['status', 'verification_status', 'passenger_verification_status', 'wallet_balance', 'warning_count'].forEach((field) => {
     if (req.body[field] !== undefined) user[field] = req.body[field];
   });
   user.updated_at = new Date().toISOString();
-  res.json({ ok: true, user });
+  const changedVerification =
+    previous.status !== user.status ||
+    previous.verification_status !== user.verification_status ||
+    previous.passenger_verification_status !== user.passenger_verification_status;
+  const notification = changedVerification
+    ? addNotification({
+        userId: user.user_id,
+        type: 'account_verification_update',
+        title: 'Account verification updated',
+        message: `Your account status is ${user.status || 'active'}, owner verification is ${user.verification_status || 'pending'}, and passenger verification is ${user.passenger_verification_status || 'pending'}.`,
+        metadata: {
+          status: user.status,
+          verification_status: user.verification_status,
+          passenger_verification_status: user.passenger_verification_status,
+        },
+      })
+    : null;
+  if (notification) {
+    publishRealtime(user.user_id, 'notification.created', notification);
+    notifyUserMobile(user.user_id, notification.title, notification.message);
+  }
+  res.json({ ok: true, user, notification });
 });
 
 app.post('/api/admin/users/:userId/warnings', requireAuth, requireRole('admin'), (req, res) => {
