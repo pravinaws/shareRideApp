@@ -12,24 +12,47 @@
   <main class="app-shell">
     <ng-container [ngSwitch]="currentRoute">
       <section *ngSwitchCase="'/login'" class="screen-stack login-screen">
-        <header class="login-hero">
-          <strong>RideShare</strong>
-          <span>Verified shared rides for passengers and drivers.</span>
-        </header>
-
-        <article class="minimal-card auth-card">
-          <div class="section-title">
-            <h1>{{ authMode === 'signup' ? 'Create account' : 'Mobile login' }}</h1>
-            <p>Use WhatsApp OTP verification to continue.</p>
+        <article class="minimal-card auth-card" [class.signup-auth-card]="authMode === 'signup' && !otpSent">
+          <div class="auth-topbar">
+            <button
+              class="auth-back-button"
+              type="button"
+              aria-label="Back"
+              (click)="backAuthStep()"
+              *ngIf="authMode === 'signup' || otpSent"
+            >
+              <ion-icon name="arrow-back-outline"></ion-icon>
+            </button>
+            <span class="auth-back-spacer" *ngIf="authMode === 'login' && !otpSent"></span>
+            <strong>RideShare</strong>
           </div>
-          <label class="form-row input-row auth-inline-row" *ngIf="authMode === 'signup'">
+
+          <div class="auth-brand-visual" aria-hidden="true">
+            <img class="auth-logo-image" src="assets/app-logo.png" alt="" />
+          </div>
+
+          <div class="section-title auth-title">
+            <h1>{{ otpSent ? 'OTP Verification' : authMode === 'signup' ? 'Create account' : 'OTP Verification' }}</h1>
+            <p *ngIf="!otpSent">
+              {{
+                authMode === 'signup'
+                  ? 'Create your profile and verify your mobile number.'
+                  : 'We will send you a one time password on this mobile number.'
+              }}
+            </p>
+            <p *ngIf="otpSent">
+              Enter the OTP sent to <strong>{{ authPhoneDisplay }}</strong>
+            </p>
+          </div>
+
+          <label class="form-row input-row auth-inline-row" *ngIf="authMode === 'signup' && !otpSent">
             <span>
               <small>Full name</small>
               <input [(ngModel)]="loginForm.fullName" aria-label="Full name" autocomplete="name" />
             </span>
             <ion-icon name="person-circle-outline"></ion-icon>
           </label>
-          <label class="form-row input-row auth-inline-row" *ngIf="authMode === 'signup'">
+          <label class="form-row input-row auth-inline-row" *ngIf="authMode === 'signup' && !otpSent">
             <span>
               <small>Email</small>
               <input [(ngModel)]="loginForm.email" aria-label="Email" autocomplete="email" inputmode="email" placeholder="name@example.com" />
@@ -37,70 +60,55 @@
             <ion-icon name="mail-outline"></ion-icon>
           </label>
           <label class="form-row input-row phone-row" *ngIf="!otpSent">
+            <small class="floating-label">Mobile number</small>
             <strong class="country-code">+91</strong>
-            <span class="phone-input-wrap">
-              <small>WhatsApp mobile number</small>
-              <input
-                [ngModel]="loginForm.phone"
-                (ngModelChange)="onLoginPhoneInput($event)"
-                aria-label="WhatsApp mobile number"
-                autocomplete="tel"
-                inputmode="numeric"
-                maxlength="10"
-                pattern="[0-9]*"
-                placeholder="10 digit number"
-              />
+            <input
+              [ngModel]="loginForm.phone"
+              (ngModelChange)="onLoginPhoneInput($event)"
+              aria-label="WhatsApp mobile number"
+              autocomplete="tel"
+              inputmode="numeric"
+              maxlength="10"
+              pattern="[0-9]*"
+              placeholder="10 digit number"
+            />
+          </label>
+          <button class="primary-button auth-submit-button" type="button" (click)="sendLoginOtp()" [disabled]="otpSending" *ngIf="!otpSent">
+            {{ otpSending ? 'Sending OTP...' : 'Get OTP' }}
+          </button>
+          <label class="otp-box-field" *ngIf="otpSent">
+            <input
+              class="otp-native-input"
+              [ngModel]="loginForm.otp"
+              (ngModelChange)="onLoginOtpInput($event)"
+              aria-label="OTP"
+              autocomplete="one-time-code"
+              inputmode="numeric"
+              maxlength="6"
+            />
+            <span *ngFor="let index of otpBoxIndexes" [class.filled]="loginForm.otp.length > index">
+              {{ loginForm.otp.charAt(index) }}
             </span>
           </label>
-          <div class="chip-group auth-role-row" *ngIf="authMode === 'signup'">
-            <button type="button" [class.active]="loginForm.role === 'passenger'" (click)="loginForm.role = 'passenger'">
-              Passenger
+          <button class="primary-button auth-submit-button" type="button" (click)="login()" [disabled]="loginSubmitting" *ngIf="otpSent">
+            {{ loginSubmitting ? 'Verifying...' : 'Submit' }}
+          </button>
+          <p class="auth-switch-row" *ngIf="otpSent">
+            Didn't receive the OTP?
+            <button class="link-button" type="button" (click)="sendLoginOtp()" [disabled]="otpSending || otpResendSeconds > 0">
+              {{ otpResendSeconds > 0 ? 'Resend in ' + otpResendSeconds + 's' : 'Resend' }}
             </button>
-            <button type="button" [class.active]="loginForm.role === 'driver'" (click)="loginForm.role = 'driver'">
-              Driver
-            </button>
-          </div>
-          <button class="secondary-button" type="button" (click)="sendLoginOtp()" [disabled]="otpSending" *ngIf="!otpSent">
-            {{ otpSending ? 'Sending...' : 'Send OTP' }}
-          </button>
-          <label class="form-row input-row auth-inline-row" *ngIf="otpSent">
-            <span>
-              <small>OTP</small>
-              <input
-                [(ngModel)]="loginForm.otp"
-                aria-label="OTP"
-                autocomplete="one-time-code"
-                inputmode="numeric"
-                maxlength="10"
-                placeholder="Enter WhatsApp OTP"
-              />
-            </span>
-            <ion-icon name="shield-checkmark-outline"></ion-icon>
-          </label>
-          <button class="primary-button" type="button" (click)="login()" [disabled]="loginSubmitting" *ngIf="otpSent">
-            {{ loginSubmitting ? 'Verifying...' : authMode === 'signup' ? 'Verify & Signup' : 'Verify & Login' }}
-          </button>
-          <button
-            class="link-button resend-link"
-            type="button"
-            (click)="sendLoginOtp()"
-            [disabled]="otpSending || otpResendSeconds > 0"
-            *ngIf="otpSent"
-          >
-            {{ otpResendSeconds > 0 ? 'Resend OTP in ' + otpResendSeconds + 's' : 'Resend OTP' }}
-          </button>
-          <button class="link-button signup-link" type="button" (click)="showSignupForm()" *ngIf="authMode === 'login'">
-            Signup
-          </button>
-          <button class="link-button signup-link" type="button" (click)="showLoginForm()" *ngIf="authMode === 'signup'">
-            Back to login
-          </button>
+          </p>
+          <p class="auth-switch-row" *ngIf="authMode === 'login' && !otpSent">
+            Don't have an account?
+            <button class="link-button" type="button" (click)="showSignupForm()">Sign Up</button>
+          </p>
+          <p class="auth-switch-row" *ngIf="authMode === 'signup' && !otpSent">
+            Already have an account?
+            <button class="link-button" type="button" (click)="showLoginForm()">Login</button>
+          </p>
         </article>
 
-        <article class="realtime-strip">
-          <ion-icon name="notifications-outline"></ion-icon>
-          <span>{{ liveActivity }}</span>
-        </article>
       </section>
 
       <section *ngSwitchCase="'/search'" class="screen-stack search-screen">
@@ -616,9 +624,78 @@
             <span><ion-icon name="person-circle-outline"></ion-icon> Passenger {{ passengerVerificationLabel }}</span>
           </div>
         </article>
-        <article class="minimal-card">
-          <div class="section-title compact"><h2>Bio</h2></div>
-          <p class="body-copy">{{ profile.bio }}</p>
+        <article class="minimal-card personal-details-card">
+          <div class="section-title compact inline">
+            <h2>Personal details</h2>
+            <button class="secondary-mini" type="button" (click)="editPersonalDetails()" *ngIf="!personalDetailsEditing">Edit</button>
+          </div>
+          <div class="profile-detail-list" *ngIf="!personalDetailsEditing">
+            <span><small>Name</small><strong>{{ profile.fullName }}</strong></span>
+            <span><small>Birthday</small><strong>{{ profile.birthDate || 'Not added' }}</strong></span>
+            <span><small>Email</small><strong>{{ profile.email || 'Not added' }}</strong></span>
+            <span><small>Phone</small><strong>{{ profile.phone }}</strong></span>
+            <span><small>Address</small><strong>{{ profile.address || 'Not added' }}</strong></span>
+            <span><small>City</small><strong>{{ profile.city || 'Not added' }}</strong></span>
+            <span><small>State</small><strong>{{ profile.state || 'Not added' }}</strong></span>
+            <span><small>Pincode</small><strong>{{ profile.pincode || 'Not added' }}</strong></span>
+            <span><small>Gender</small><strong>{{ profile.gender || 'Not added' }}</strong></span>
+            <span><small>Emergency contact</small><strong>{{ profile.emergencyContactName || 'Not added' }} {{ profile.emergencyContactPhone }}</strong></span>
+          </div>
+          <p class="body-copy" *ngIf="!personalDetailsEditing">{{ profile.bio }}</p>
+          <div class="personal-details-form" *ngIf="personalDetailsEditing">
+            <label class="form-row input-row">
+              <span><small>Full name</small><input [(ngModel)]="profile.fullName" aria-label="Full name" autocomplete="name" /></span>
+            </label>
+            <label class="form-row input-row">
+              <span><small>Birthday</small><input [(ngModel)]="profile.birthDate" type="date" aria-label="Birthday" /></span>
+            </label>
+            <label class="form-row input-row">
+              <span><small>Email</small><input [(ngModel)]="profile.email" type="email" aria-label="Email" autocomplete="email" /></span>
+            </label>
+            <label class="form-row input-row">
+              <span><small>Age</small><input [(ngModel)]="profile.age" type="number" min="18" aria-label="Age" /></span>
+            </label>
+            <label class="form-row input-row full-row">
+              <span><small>Address</small><input [(ngModel)]="profile.address" aria-label="Address" autocomplete="street-address" /></span>
+            </label>
+            <label class="form-row input-row">
+              <span><small>City</small><input [(ngModel)]="profile.city" aria-label="City" autocomplete="address-level2" /></span>
+            </label>
+            <label class="form-row input-row">
+              <span><small>State</small><input [(ngModel)]="profile.state" aria-label="State" autocomplete="address-level1" /></span>
+            </label>
+            <label class="form-row input-row">
+              <span><small>Pincode</small><input [(ngModel)]="profile.pincode" aria-label="Pincode" autocomplete="postal-code" inputmode="numeric" /></span>
+            </label>
+            <label class="form-row input-row">
+              <span>
+                <small>Gender</small>
+                <select [(ngModel)]="profile.gender" aria-label="Gender">
+                  <option value="">Select</option>
+                  <option>Female</option>
+                  <option>Male</option>
+                  <option>Other</option>
+                  <option>Prefer not to say</option>
+                </select>
+              </span>
+            </label>
+            <label class="form-row input-row">
+              <span><small>Emergency name</small><input [(ngModel)]="profile.emergencyContactName" aria-label="Emergency contact name" /></span>
+            </label>
+            <label class="form-row input-row">
+              <span><small>Emergency phone</small><input [(ngModel)]="profile.emergencyContactPhone" aria-label="Emergency contact phone" inputmode="tel" /></span>
+            </label>
+            <label class="form-row input-row full-row textarea-row">
+              <span><small>Bio</small><textarea [(ngModel)]="profile.bio" aria-label="Bio" rows="3"></textarea></span>
+            </label>
+          </div>
+          <div class="dual-actions" *ngIf="personalDetailsEditing">
+            <button type="button" (click)="saveProfile()" [disabled]="profileSaving">
+              <span class="button-spinner" *ngIf="profileSaving"></span>
+              {{ profileSaving ? 'Saving...' : 'Save Details' }}
+            </button>
+            <button class="secondary-mini" type="button" (click)="cancelPersonalDetailsEdit()" [disabled]="profileSaving">Cancel</button>
+          </div>
         </article>
         <article class="minimal-card passenger-verification-card">
           <div class="section-title compact inline">

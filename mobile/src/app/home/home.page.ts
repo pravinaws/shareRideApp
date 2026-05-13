@@ -306,6 +306,7 @@ export class HomePage {
   otpSent = false;
   otpSending = false;
   otpResendSeconds = 0;
+  otpBoxIndexes = [0, 1, 2, 3, 4, 5];
   private otpResendTimer?: number;
   loginSubmitting = false;
   loginForm = {
@@ -317,14 +318,23 @@ export class HomePage {
   };
   profileLoading = false;
   profileSaving = false;
+  personalDetailsEditing = false;
   profile = {
     fullName: 'Harshala',
     age: 29,
+    birthDate: '1997-01-01',
     rating: 4.9,
     role: 'driver',
     verificationStatus: 'verified',
     phone: '+919970795914',
     email: 'harshala@example.com',
+    address: 'Pune, Maharashtra',
+    city: 'Pune',
+    state: 'Maharashtra',
+    pincode: '411001',
+    gender: '',
+    emergencyContactName: '',
+    emergencyContactPhone: '',
     photoUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=256&q=80',
     bio: 'Clean car, safe driving, and punctual pickup. Prefer verified travellers for office and intercity routes.',
     memberSince: '2026',
@@ -868,6 +878,7 @@ export class HomePage {
     { brand: 'Visa', last4: '4242', label: 'Primary card', status: 'Active' },
     { brand: 'UPI', last4: 'harshala@upi', label: 'Fast refunds', status: 'Verified' },
   ];
+  private lastHandledPaymentRedirect = '';
   walletBalance = 2480;
   walletTopUpAmount = 500;
   readonly quickWalletAmounts = [100, 500, 1000];
@@ -1337,12 +1348,16 @@ export class HomePage {
     this.loadProfile();
     this.loadConversations();
     this.loadPayments();
+    this.handlePaymentRedirectState();
     this.router.events
       .pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd))
       .subscribe((event) => {
         this.currentRouteValue = this.normalizeRoute(event.urlAfterRedirects);
         if (this.currentRouteValue === '/profile') {
           this.loadProfile();
+        }
+        if (this.currentRouteValue === '/payments') {
+          this.handlePaymentRedirectState();
         }
       });
 
@@ -1583,11 +1598,19 @@ export class HomePage {
             ...this.profile,
             fullName: user.full_name || this.profile.fullName,
             age: user.age || this.profile.age,
+            birthDate: user.birth_date || this.profile.birthDate,
             rating: Number(user.rating || this.profile.rating),
             role: user.role || this.profile.role,
             verificationStatus: user.verification_status || this.profile.verificationStatus,
             phone: user.phone || this.profile.phone,
             email: user.email || this.profile.email,
+            address: user.address || this.profile.address,
+            city: user.city || this.profile.city,
+            state: user.state || this.profile.state,
+            pincode: user.pincode || this.profile.pincode,
+            gender: user.gender || this.profile.gender,
+            emergencyContactName: user.emergency_contact_name || this.profile.emergencyContactName,
+            emergencyContactPhone: user.emergency_contact_phone || this.profile.emergencyContactPhone,
             photoUrl: user.photo_url || this.profile.photoUrl,
             bio: user.bio || this.profile.bio,
             memberSince: user.created_at ? new Date(user.created_at).getFullYear().toString() : this.profile.memberSince,
@@ -1660,13 +1683,51 @@ export class HomePage {
           this.transactions = data.map((payment: any) => ({
             title: payment.provider === 'razorpay' ? 'Razorpay wallet top-up' : 'Wallet transaction',
             amount: `${payment.status === 'paid' ? '+' : ''} INR ${Number(payment.amount || 0)}`,
-            status: payment.status,
-            date: payment.created_at ? new Date(payment.created_at).toLocaleDateString() : 'Today',
+            status: this.formatPaymentStatus(payment.status),
+            date: payment.updated_at
+              ? new Date(payment.updated_at).toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+              : payment.created_at
+                ? new Date(payment.created_at).toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+                : 'Now',
           }));
         }
       },
       error: () => undefined,
     });
+  }
+
+  private formatPaymentStatus(status: string) {
+    const normalized = String(status || '').trim().toLowerCase();
+    if (!normalized) return 'Pending';
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  }
+
+  private handlePaymentRedirectState() {
+    if (this.normalizeRoute(this.router.url) !== '/payments') return;
+    const params = new URLSearchParams(window.location.search || '');
+    const paymentStatus = params.get('paymentStatus');
+    const paymentId = params.get('paymentId');
+    if (!paymentStatus) return;
+
+    const redirectKey = `${paymentStatus}:${paymentId || ''}:${window.location.search}`;
+    if (this.lastHandledPaymentRedirect === redirectKey) return;
+    this.lastHandledPaymentRedirect = redirectKey;
+
+    this.walletProcessing = false;
+    this.appLoading = false;
+    this.loadPayments();
+
+    if (paymentStatus === 'success') {
+      this.presentToast('Payment successful. Wallet updated.');
+    } else if (paymentStatus === 'cancelled') {
+      this.presentToast('Payment cancelled. Wallet not updated.');
+    } else if (paymentStatus === 'failed') {
+      this.presentToast('Payment failed. Wallet not updated.');
+    } else {
+      this.presentToast(`Payment status: ${this.formatPaymentStatus(paymentStatus)}`);
+    }
+
+    this.router.navigateByUrl('/payments', { replaceUrl: true });
   }
 
   saveProfile(options: { silent?: boolean } = {}) {
@@ -1680,6 +1741,15 @@ export class HomePage {
       .patch(`${this.apiUrl}/users/me`, {
         full_name: this.profile.fullName,
         age: this.profile.age,
+        birth_date: this.profile.birthDate,
+        email: this.profile.email,
+        address: this.profile.address,
+        city: this.profile.city,
+        state: this.profile.state,
+        pincode: this.profile.pincode,
+        gender: this.profile.gender,
+        emergency_contact_name: this.profile.emergencyContactName,
+        emergency_contact_phone: this.profile.emergencyContactPhone,
         bio: this.profile.bio,
         photo_url: this.profile.photoUrl,
         gov_id_number: this.profile.govIdNumber,
@@ -1691,6 +1761,7 @@ export class HomePage {
       .subscribe({
         next: () => {
           this.profileSaving = false;
+          this.personalDetailsEditing = false;
           if (!options.silent) this.presentToast('Profile saved');
           this.loadProfile();
         },
@@ -1699,6 +1770,15 @@ export class HomePage {
           this.presentToast(error?.error?.error || 'Profile save failed');
         },
       });
+  }
+
+  editPersonalDetails() {
+    this.personalDetailsEditing = true;
+  }
+
+  cancelPersonalDetailsEdit() {
+    this.personalDetailsEditing = false;
+    this.loadProfile();
   }
 
   updateProfilePhoto(event: Event) {
@@ -1870,6 +1950,15 @@ export class HomePage {
     this.stopOtpResendTimer();
   }
 
+  onLoginOtpInput(value: string) {
+    this.loginForm.otp = String(value || '').replace(/\D/g, '').slice(0, 6);
+  }
+
+  get authPhoneDisplay() {
+    const phone = this.loginForm.phone || '';
+    return phone ? `+91 ${phone}` : '+91';
+  }
+
   private isLoginPhoneValid() {
     return /^\d{10}$/.test(this.loginForm.phone);
   }
@@ -1908,6 +1997,7 @@ export class HomePage {
       next: (response) => {
         this.otpSent = true;
         this.otpSending = false;
+        this.scrollAuthToTop();
         this.startOtpResendTimer();
         if (response.testOtp) {
           this.loginForm.otp = response.testOtp;
@@ -1931,6 +2021,7 @@ export class HomePage {
     this.otpSent = false;
     this.loginForm.otp = '';
     this.stopOtpResendTimer();
+    this.scrollAuthToTop();
   }
 
   showLoginForm() {
@@ -1938,6 +2029,23 @@ export class HomePage {
     this.otpSent = false;
     this.loginForm.otp = '';
     this.stopOtpResendTimer();
+    this.scrollAuthToTop();
+  }
+
+  backAuthStep() {
+    if (this.otpSent) {
+      this.otpSent = false;
+      this.loginForm.otp = '';
+      this.stopOtpResendTimer();
+      this.scrollAuthToTop();
+      return;
+    }
+
+    this.showLoginForm();
+  }
+
+  private scrollAuthToTop() {
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
   }
 
   private startOtpResendTimer() {
@@ -2264,11 +2372,8 @@ export class HomePage {
     if (!razorpay?.keyId) {
       this.walletProcessing = false;
       this.appLoading = false;
-      this.transactions = [
-        { title: 'Razorpay wallet top-up', amount: `INR ${payment.amount}`, status: 'pending', date: 'Now' },
-        ...this.transactions,
-      ];
-      this.presentToast('Razorpay key is not configured on AWS. Balance not updated.');
+      this.loadPayments();
+      this.presentToast('Razorpay key is not configured on the API. Balance not updated.');
       return;
     }
 
@@ -2287,26 +2392,52 @@ export class HomePage {
       name: razorpay.name,
       description: razorpay.description,
       order_id: razorpay.orderId,
+      callback_url: `${this.apiUrl}/payments/razorpay/callback`,
+      redirect: true,
       prefill: {
         name: this.profile.fullName,
         contact: this.profile.phone,
         email: this.profile.email,
       },
-      handler: (result: any) => this.verifyRazorpayPayment(payment.payment_id, result.razorpay_payment_id),
+      theme: {
+        color: '#001F3F',
+      },
+      handler: (result: any) => this.verifyRazorpayPayment(payment.payment_id, result),
       modal: {
         ondismiss: () => {
           this.walletProcessing = false;
           this.appLoading = false;
           this.presentToast('Payment cancelled. Wallet not updated.');
-          this.api.verifyPayment(payment.payment_id, { status: 'cancelled' }).subscribe({ error: () => undefined });
+          this.api.verifyPayment(payment.payment_id, { status: 'cancelled' }).subscribe({
+            next: () => this.loadPayments(),
+            error: () => this.loadPayments(),
+          });
         },
       },
+    });
+    checkout.on('payment.failed', (response: any) => {
+      this.walletProcessing = false;
+      this.appLoading = false;
+      this.api.verifyPayment(payment.payment_id, {
+        status: 'failed',
+        razorpayPaymentId: response?.error?.metadata?.payment_id,
+        razorpayOrderId: response?.error?.metadata?.order_id,
+      }).subscribe({
+        next: () => this.loadPayments(),
+        error: () => this.loadPayments(),
+      });
+      this.presentToast(response?.error?.description || 'Payment failed. Wallet not updated.');
     });
     checkout.open();
   }
 
-  private verifyRazorpayPayment(paymentId: number, razorpayPaymentId: string) {
-    this.api.verifyPayment(paymentId, { status: 'success', razorpayPaymentId }).subscribe({
+  private verifyRazorpayPayment(paymentId: number, result: any) {
+    this.api.verifyPayment(paymentId, {
+      status: 'success',
+      razorpayPaymentId: result?.razorpay_payment_id,
+      razorpayOrderId: result?.razorpay_order_id,
+      razorpaySignature: result?.razorpay_signature,
+    }).subscribe({
       next: (response: any) => {
         this.walletProcessing = false;
         this.appLoading = false;

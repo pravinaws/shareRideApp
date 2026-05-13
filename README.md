@@ -33,6 +33,48 @@ Create the MySQL schema:
 mysql -u root -p < schema.sql
 ```
 
+
+## Local project paths (Windows example)
+
+If your local workspace is:
+
+`C:\Users\Harshala-Pravin\Documents\Codex\2026-05-07\`
+
+use this layout:
+
+- `...\shareRideApp\mobile` → Angular/Ionic UI project
+- `...\shareRideApp\api` → Backend API project
+- `...\shareRideApp\database` → DB schema and seed scripts
+
+### Start UI (Angular/Ionic) locally
+
+```bash
+cd mobile
+npm install
+npm start
+```
+
+Then open `http://localhost:8100` in your browser.
+
+### Start Backend API locally
+
+```bash
+cd api
+copy .env.example .env
+npm install
+npm run dev
+```
+
+Then open `http://localhost:3000/health` (or your configured API port).
+
+### Start MySQL DB locally
+
+```bash
+mysql -u root -p < database/ride-sharing-schema.sql
+```
+
+Set API DB values in `api/.env` (host, port, user, password, database) to match your local MySQL instance.
+
 ## Push Credentials
 
 Android push needs Firebase Cloud Messaging:

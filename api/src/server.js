@@ -2,6 +2,7 @@ import 'dotenv/config';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
+import crypto from 'node:crypto';
 import { createToken, requireAuth, requireRole } from './auth.js';
 import { saveNotificationLog, upsertDeviceToken } from './db.js';
 import { buildNotificationPayload, driverNotificationFlows, passengerNotificationFlows } from './notification-flows.js';
@@ -15,6 +16,9 @@ import { normalizePhone, sendWhatsAppOtp, verifyWhatsAppOtp } from './whatsapp-o
 const app = express();
 const port = Number(process.env.PORT || 4000);
 const host = process.env.HOST || '0.0.0.0';
+const razorpayKeyId = String(process.env.RAZORPAY_KEY_ID || '').trim();
+const razorpayKeySecret = String(process.env.RAZORPAY_KEY_SECRET || '').trim();
+const appBaseUrl = String(process.env.APP_BASE_URL || 'http://127.0.0.1:4200').trim().replace(/\/+$/, '');
 const corsOrigin = !process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === '*'
   ? true
   : process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean);
@@ -38,6 +42,63 @@ function asNumber(value) {
 
 function normalizeText(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function isRazorpayConfigured() {
+  return Boolean(razorpayKeyId && razorpayKeySecret);
+}
+
+async function createRazorpayOrder({ paymentId, amount, user }) {
+  const response = await fetch('https://api.razorpay.com/v1/orders', {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${razorpayKeyId}:${razorpayKeySecret}`).toString('base64')}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      amount: Math.round(Number(amount || 0) * 100),
+      currency: 'INR',
+      receipt: `wallet_${paymentId}_${Date.now()}`.slice(0, 40),
+      notes: {
+        user_id: String(user?.user_id || ''),
+        payment_id: String(paymentId),
+        email: String(user?.email || ''),
+        phone: String(user?.phone || ''),
+      },
+    }),
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload?.id) {
+    throw new Error(payload?.error?.description || payload?.error?.reason || 'Unable to create Razorpay order');
+  }
+
+  return payload;
+}
+
+function verifyRazorpaySignature(orderId, razorpayPaymentId, razorpaySignature) {
+  const expected = crypto.createHmac('sha256', razorpayKeySecret).update(`${orderId}|${razorpayPaymentId}`).digest('hex');
+  const expectedBuffer = Buffer.from(expected);
+  const signatureBuffer = Buffer.from(String(razorpaySignature || ''));
+  return expectedBuffer.length === signatureBuffer.length && crypto.timingSafeEqual(expectedBuffer, signatureBuffer);
+}
+
+function normalizePaymentStatus(value) {
+  const status = String(value || '').toLowerCase();
+  if (status === 'success' || status === 'paid' || status === 'authorized' || status === 'captured') return 'paid';
+  if (status === 'cancelled' || status === 'canceled') return 'cancelled';
+  if (status === 'failed') return 'failed';
+  if (status === 'created') return 'created';
+  return 'pending';
+}
+
+function buildPaymentsRedirect(status, paymentId, extra = {}) {
+  const search = new URLSearchParams({
+    paymentStatus: status,
+    ...(paymentId ? { paymentId: String(paymentId) } : {}),
+    ...Object.fromEntries(Object.entries(extra).filter(([, value]) => value !== undefined && value !== null && value !== '')),
+  });
+  return `${appBaseUrl}/payments?${search.toString()}`;
 }
 
 function haversineKm(firstLat, firstLng, secondLat, secondLng) {
@@ -213,6 +274,15 @@ app.patch('/api/users/me', requireAuth, (req, res) => {
   const allowed = [
     'full_name',
     'age',
+    'birth_date',
+    'email',
+    'address',
+    'city',
+    'state',
+    'pincode',
+    'gender',
+    'emergency_contact_name',
+    'emergency_contact_phone',
     'bio',
     'photo_url',
     'travel_preferences',
@@ -853,13 +923,14 @@ app.get('/api/payments', requireAuth, (req, res) => {
   res.json({ ok: true, walletBalance: Number(user?.wallet_balance || 0), ...paginate(payments, req) });
 });
 
-app.post('/api/payments', requireAuth, (req, res) => {
+app.post('/api/payments', requireAuth, async (req, res) => {
   const missing = requireFields(req.body, ['bookingId', 'amount', 'provider']);
   if (missing.length) return badRequest(res, missing);
   const amount = Number(req.body.amount);
   if (!Number.isFinite(amount) || amount < 1) {
     return res.status(422).json({ error: 'Enter a valid amount' });
   }
+  const user = store.users.find((item) => item.user_id === req.user.sub);
   const payment = {
     payment_id: nextId(store.payments, 'payment_id'),
     booking_id: asNumber(req.body.bookingId),
@@ -867,15 +938,26 @@ app.post('/api/payments', requireAuth, (req, res) => {
     amount,
     provider: req.body.provider,
     status: req.body.provider === 'razorpay' ? 'created' : 'paid',
-    razorpay_order_id: req.body.provider === 'razorpay' ? `order_${Date.now()}_${req.user.sub}` : null,
+    razorpay_order_id: null,
+    razorpay_signature: null,
     razorpay_payment_id: null,
     refund_status: 'none',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
+
+  if (payment.provider === 'razorpay' && isRazorpayConfigured()) {
+    try {
+      const order = await createRazorpayOrder({ paymentId: payment.payment_id, amount, user });
+      payment.razorpay_order_id = order.id;
+      payment.status = normalizePaymentStatus(order.status);
+    } catch (error) {
+      return res.status(502).json({ error: error.message || 'Unable to create Razorpay order' });
+    }
+  }
+
   store.payments.unshift(payment);
   if (payment.status === 'paid') {
-    const user = store.users.find((item) => item.user_id === req.user.sub);
     if (user) user.wallet_balance = Number(user.wallet_balance || 0) + amount;
     notifyUserMobile(req.user.sub, 'Payment successful', `Payment of INR ${payment.amount} was completed.`);
   }
@@ -884,7 +966,7 @@ app.post('/api/payments', requireAuth, (req, res) => {
     ok: true,
     payment,
     razorpay: {
-      keyId: process.env.RAZORPAY_KEY_ID || '',
+      keyId: isRazorpayConfigured() ? razorpayKeyId : '',
       orderId: payment.razorpay_order_id,
       amount: Math.round(amount * 100),
       currency: 'INR',
@@ -902,23 +984,88 @@ app.post('/api/payments/:paymentId/verify', requireAuth, (req, res) => {
     return res.json({ ok: true, payment, walletBalance: Number(user?.wallet_balance || 0) });
   }
 
-  const gatewayStatus = String(req.body.status || '').toLowerCase();
-  const paymentId = req.body.razorpayPaymentId || req.body.razorpay_payment_id;
-  if (gatewayStatus !== 'success' || !paymentId) {
-    payment.status = gatewayStatus === 'cancelled' ? 'cancelled' : gatewayStatus === 'failed' ? 'failed' : 'pending';
+  const gatewayStatus = normalizePaymentStatus(req.body.status);
+  const razorpayPaymentId = req.body.razorpayPaymentId || req.body.razorpay_payment_id;
+  const razorpayOrderId = req.body.razorpayOrderId || req.body.razorpay_order_id;
+  const razorpaySignature = req.body.razorpaySignature || req.body.razorpay_signature;
+
+  if (gatewayStatus !== 'paid' || !razorpayPaymentId) {
+    payment.status = gatewayStatus;
+    payment.razorpay_payment_id = razorpayPaymentId || payment.razorpay_payment_id;
+    payment.razorpay_signature = razorpaySignature || payment.razorpay_signature;
     payment.updated_at = new Date().toISOString();
     persistStore();
     return res.status(422).json({ ok: false, error: 'Payment was not successful', payment });
   }
 
+  if (payment.provider === 'razorpay' && isRazorpayConfigured()) {
+    if (!payment.razorpay_order_id || payment.razorpay_order_id !== razorpayOrderId) {
+      payment.status = 'failed';
+      payment.updated_at = new Date().toISOString();
+      persistStore();
+      return res.status(422).json({ ok: false, error: 'Razorpay order mismatch', payment });
+    }
+
+    if (!razorpaySignature || !verifyRazorpaySignature(payment.razorpay_order_id, razorpayPaymentId, razorpaySignature)) {
+      payment.status = 'failed';
+      payment.razorpay_payment_id = razorpayPaymentId;
+      payment.updated_at = new Date().toISOString();
+      persistStore();
+      return res.status(422).json({ ok: false, error: 'Razorpay signature verification failed', payment });
+    }
+  }
+
   payment.status = 'paid';
-  payment.razorpay_payment_id = paymentId;
+  payment.razorpay_payment_id = razorpayPaymentId;
+  payment.razorpay_signature = razorpaySignature || payment.razorpay_signature;
   payment.updated_at = new Date().toISOString();
   const user = store.users.find((item) => item.user_id === req.user.sub);
   if (user) user.wallet_balance = Number(user.wallet_balance || 0) + Number(payment.amount || 0);
   persistStore();
   notifyUserMobile(req.user.sub, 'Payment successful', `Payment of INR ${payment.amount} was completed.`);
   res.json({ ok: true, payment, walletBalance: Number(user?.wallet_balance || 0) });
+});
+
+app.all('/api/payments/razorpay/callback', (req, res) => {
+  const gatewayStatus = normalizePaymentStatus(req.body.status || req.query.status || '');
+  const razorpayPaymentId = req.body.razorpay_payment_id || req.body.razorpayPaymentId || req.query.razorpay_payment_id || req.query.razorpayPaymentId;
+  const razorpayOrderId = req.body.razorpay_order_id || req.body.razorpayOrderId || req.query.razorpay_order_id || req.query.razorpayOrderId;
+  const razorpaySignature = req.body.razorpay_signature || req.body.razorpaySignature || req.query.razorpay_signature || req.query.razorpaySignature;
+
+  const payment = store.payments.find((item) => item.razorpay_order_id === String(razorpayOrderId || '').trim());
+  if (!payment) {
+    return res.redirect(buildPaymentsRedirect('failed', '', { reason: 'payment_not_found' }));
+  }
+
+  if (payment.status === 'paid') {
+    return res.redirect(buildPaymentsRedirect('success', payment.payment_id));
+  }
+
+  if (gatewayStatus !== 'paid' || !razorpayPaymentId || !razorpaySignature) {
+    payment.status = gatewayStatus === 'pending' ? 'pending' : gatewayStatus;
+    payment.razorpay_payment_id = razorpayPaymentId || payment.razorpay_payment_id;
+    payment.updated_at = new Date().toISOString();
+    persistStore();
+    return res.redirect(buildPaymentsRedirect(payment.status, payment.payment_id));
+  }
+
+  if (!verifyRazorpaySignature(payment.razorpay_order_id, razorpayPaymentId, razorpaySignature)) {
+    payment.status = 'failed';
+    payment.razorpay_payment_id = razorpayPaymentId;
+    payment.updated_at = new Date().toISOString();
+    persistStore();
+    return res.redirect(buildPaymentsRedirect('failed', payment.payment_id, { reason: 'signature_mismatch' }));
+  }
+
+  payment.status = 'paid';
+  payment.razorpay_payment_id = razorpayPaymentId;
+  payment.razorpay_signature = razorpaySignature;
+  payment.updated_at = new Date().toISOString();
+  const user = store.users.find((item) => item.user_id === payment.payer_id);
+  if (user) user.wallet_balance = Number(user.wallet_balance || 0) + Number(payment.amount || 0);
+  persistStore();
+  notifyUserMobile(payment.payer_id, 'Payment successful', `Payment of INR ${payment.amount} was completed.`);
+  return res.redirect(buildPaymentsRedirect('success', payment.payment_id));
 });
 
 app.get('/api/reviews', requireAuth, (req, res) => {
