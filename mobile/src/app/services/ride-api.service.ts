@@ -41,6 +41,10 @@ export class RideApiService {
     return this.http.get<ApiList<unknown>>(`${this.apiUrl}/bookings`, { params: this.toParams(filters) });
   }
 
+  updateBooking(bookingId: number, payload: unknown) {
+    return this.http.patch(`${this.apiUrl}/bookings/${bookingId}`, payload);
+  }
+
   getVehicles() {
     return this.http.get<ApiList<unknown>>(`${this.apiUrl}/vehicles`);
   }
@@ -99,6 +103,10 @@ export class RideApiService {
 
   verifyPayment(paymentId: number, payload: unknown) {
     return this.http.post(`${this.apiUrl}/payments/${paymentId}/verify`, payload);
+  }
+
+  reconcilePayment(paymentId: number, payload: unknown = {}) {
+    return this.http.post(`${this.apiUrl}/payments/${paymentId}/reconcile`, payload);
   }
 
   private toParams(filters: Record<string, string | number | boolean | undefined>) {

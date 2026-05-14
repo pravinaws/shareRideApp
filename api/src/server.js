@@ -48,11 +48,15 @@ function isRazorpayConfigured() {
   return Boolean(razorpayKeyId && razorpayKeySecret);
 }
 
+function razorpayAuthHeader() {
+  return `Basic ${Buffer.from(`${razorpayKeyId}:${razorpayKeySecret}`).toString('base64')}`;
+}
+
 async function createRazorpayOrder({ paymentId, amount, user }) {
   const response = await fetch('https://api.razorpay.com/v1/orders', {
     method: 'POST',
     headers: {
-      Authorization: `Basic ${Buffer.from(`${razorpayKeyId}:${razorpayKeySecret}`).toString('base64')}`,
+      Authorization: razorpayAuthHeader(),
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -76,6 +80,21 @@ async function createRazorpayOrder({ paymentId, amount, user }) {
   return payload;
 }
 
+async function fetchRazorpayPayment(razorpayPaymentId) {
+  if (!isRazorpayConfigured() || !razorpayPaymentId) return null;
+  const response = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(razorpayPaymentId)}`, {
+    headers: {
+      Authorization: razorpayAuthHeader(),
+      Accept: 'application/json',
+    },
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error?.description || payload?.error?.reason || 'Unable to fetch Razorpay payment status');
+  }
+  return payload;
+}
+
 function verifyRazorpaySignature(orderId, razorpayPaymentId, razorpaySignature) {
   const expected = crypto.createHmac('sha256', razorpayKeySecret).update(`${orderId}|${razorpayPaymentId}`).digest('hex');
   const expectedBuffer = Buffer.from(expected);
@@ -85,20 +104,78 @@ function verifyRazorpaySignature(orderId, razorpayPaymentId, razorpaySignature) 
 
 function normalizePaymentStatus(value) {
   const status = String(value || '').toLowerCase();
-  if (status === 'success' || status === 'paid' || status === 'authorized' || status === 'captured') return 'paid';
+  if (status === 'success' || status === 'paid' || status === 'captured') return 'paid';
+  if (status === 'authorized') return 'pending';
   if (status === 'cancelled' || status === 'canceled') return 'cancelled';
   if (status === 'failed') return 'failed';
   if (status === 'created') return 'created';
   return 'pending';
 }
 
-function buildPaymentsRedirect(status, paymentId, extra = {}) {
+function appBaseUrlForRequest(req) {
+  const hostHeader = String(req.get('host') || '').trim();
+  const hostname = hostHeader.split(':')[0];
+  const isLocalhost = ['127.0.0.1', 'localhost', '::1'].includes(hostname);
+  if (isLocalhost) return appBaseUrl;
+
+  const forwardedProto = String(req.get('x-forwarded-proto') || '').split(',')[0].trim();
+  const protocol = forwardedProto || req.protocol || 'https';
+  return `${protocol}://${hostHeader}`.replace(/\/+$/, '');
+}
+
+function buildPaymentsRedirect(req, status, paymentId, extra = {}) {
   const search = new URLSearchParams({
     paymentStatus: status,
     ...(paymentId ? { paymentId: String(paymentId) } : {}),
     ...Object.fromEntries(Object.entries(extra).filter(([, value]) => value !== undefined && value !== null && value !== '')),
   });
-  return `${appBaseUrl}/payments?${search.toString()}`;
+  return `${appBaseUrlForRequest(req)}/payments?${search.toString()}`;
+}
+
+async function reconcilePaymentWithRazorpay(payment, { razorpayPaymentId, razorpayOrderId, razorpaySignature, fallbackStatus } = {}) {
+  if (!payment) return { ok: false, error: 'Payment not found' };
+  const wasPaid = payment.status === 'paid';
+
+  const paymentId = String(razorpayPaymentId || payment.razorpay_payment_id || '').trim();
+  const orderId = String(razorpayOrderId || payment.razorpay_order_id || '').trim();
+  const signature = String(razorpaySignature || payment.razorpay_signature || '').trim();
+
+  if (payment.provider === 'razorpay' && payment.razorpay_order_id && orderId && payment.razorpay_order_id !== orderId) {
+    payment.status = 'failed';
+    payment.updated_at = new Date().toISOString();
+    persistStore();
+    return { ok: false, error: 'Razorpay order mismatch', payment };
+  }
+
+  if (signature && paymentId && payment.razorpay_order_id && !verifyRazorpaySignature(payment.razorpay_order_id, paymentId, signature)) {
+    payment.status = 'failed';
+    payment.razorpay_payment_id = paymentId;
+    payment.updated_at = new Date().toISOString();
+    persistStore();
+    return { ok: false, error: 'Razorpay signature verification failed', payment };
+  }
+
+  let gatewayPayment = null;
+  if (paymentId) {
+    gatewayPayment = await fetchRazorpayPayment(paymentId);
+  }
+
+  const gatewayStatus = normalizePaymentStatus(gatewayPayment?.status || fallbackStatus || payment.status);
+  payment.status = gatewayStatus;
+  payment.razorpay_payment_id = paymentId || payment.razorpay_payment_id;
+  payment.razorpay_signature = signature || payment.razorpay_signature;
+  payment.gateway_status = gatewayPayment?.status || payment.gateway_status || null;
+  payment.gateway_method = gatewayPayment?.method || payment.gateway_method || null;
+  payment.updated_at = new Date().toISOString();
+
+  const user = store.users.find((item) => item.user_id === payment.payer_id);
+  if (gatewayStatus === 'paid' && !wasPaid && user) {
+    user.wallet_balance = Number(user.wallet_balance || 0) + Number(payment.amount || 0);
+    notifyUserMobile(payment.payer_id, 'Payment successful', `Payment of INR ${payment.amount} was completed.`);
+  }
+
+  persistStore();
+  return { ok: gatewayStatus === 'paid', payment, walletBalance: Number(user?.wallet_balance || 0), gatewayPayment };
 }
 
 function haversineKm(firstLat, firstLng, secondLat, secondLng) {
@@ -120,6 +197,64 @@ function rideMatchesRoute(ride, origin, destination) {
   const rideDestination = `${ride.destination} ${ride.drop_point}`.toLowerCase();
   return (!originText || rideOrigin.includes(originText) || originText.includes(normalizeText(ride.origin))) &&
     (!destinationText || rideDestination.includes(destinationText) || destinationText.includes(normalizeText(ride.destination)));
+}
+
+function rideVehicle(ride) {
+  return store.vehicles.find((vehicle) => vehicle.vehicle_id === ride.vehicle_id) || null;
+}
+
+function rideOwnerBookings(userId) {
+  const ownerRideIds = store.rides
+    .filter((ride) => ride.driver_id === userId)
+    .map((ride) => ride.ride_id);
+  return store.bookings.filter((booking) => ownerRideIds.includes(booking.ride_id));
+}
+
+function publicBooking(booking) {
+  const ride = store.rides.find((item) => item.ride_id === booking.ride_id) || null;
+  const passenger = store.users.find((item) => item.user_id === booking.passenger_id) || null;
+  const vehicle = ride ? rideVehicle(ride) : null;
+  return {
+    ...booking,
+    ride,
+    passenger: passenger ? publicUser(passenger) : null,
+    vehicle,
+  };
+}
+
+function canAccessRideChat({ ride, userId, receiverId }) {
+  if (!ride) return false;
+  if (ride.driver_id !== userId) {
+    return store.bookings.some(
+      (booking) =>
+        booking.ride_id === ride.ride_id &&
+        booking.passenger_id === userId &&
+        ['requested', 'confirmed'].includes(String(booking.status || '').toLowerCase()),
+    );
+  }
+
+  if (receiverId) {
+    return store.bookings.some(
+      (booking) =>
+        booking.ride_id === ride.ride_id &&
+        booking.passenger_id === receiverId &&
+        ['requested', 'confirmed'].includes(String(booking.status || '').toLowerCase()),
+    );
+  }
+
+  return store.bookings.some(
+    (booking) => booking.ride_id === ride.ride_id && ['requested', 'confirmed'].includes(String(booking.status || '').toLowerCase()),
+  );
+}
+
+function recalculateRideAvailability(ride) {
+  const confirmedSeats = store.bookings
+    .filter((booking) => booking.ride_id === ride.ride_id && String(booking.status || '').toLowerCase() === 'confirmed')
+    .reduce((sum, booking) => sum + Number(booking.seats_booked || 0), 0);
+
+  ride.seats_available = Math.max(0, Number(ride.total_seats || 0) - confirmedSeats);
+  ride.status = ride.seats_available === 0 ? 'full' : 'published';
+  ride.updated_at = new Date().toISOString();
 }
 
 function publicMessage(message) {
@@ -185,6 +320,7 @@ app.post('/api/auth/login', async (req, res, next) => {
     const normalizedPhone = normalizePhone(req.body.phone);
     const email = String(req.body.email || '').trim().toLowerCase();
     const fullName = String(req.body.fullName || '').trim();
+    const authMode = req.body.authMode === 'signup' ? 'signup' : 'login';
     const verification = await verifyWhatsAppOtp(normalizedPhone, req.body.otp);
     if (!verification.ok) {
       return res.status(422).json({ error: verification.message || 'Invalid OTP', verification });
@@ -192,7 +328,7 @@ app.post('/api/auth/login', async (req, res, next) => {
 
     let user = store.users.find((candidate) => normalizePhone(candidate.phone) === normalizedPhone);
     const isNewUser = !user;
-    if (isNewUser && (!email || !email.includes('@'))) {
+    if (isNewUser && authMode === 'signup' && (!email || !email.includes('@'))) {
       return res.status(422).json({ error: 'Email is required for signup notifications' });
     }
     if (!user) {
@@ -300,8 +436,11 @@ app.patch('/api/users/me', requireAuth, (req, res) => {
 });
 
 app.get('/api/rides', requireAuth, (req, res) => {
-  const { origin, destination, verified, instant, status, originLat, originLng, destinationLat, destinationLng } = req.query;
+  const { origin, destination, verified, instant, status, originLat, originLng, destinationLat, destinationLng, scope } = req.query;
   let rides = [...store.rides];
+  if (String(scope || '').toLowerCase() === 'owner') {
+    rides = rides.filter((ride) => ride.driver_id === req.user.sub);
+  }
   if (origin || destination) rides = rides.filter((ride) => rideMatchesRoute(ride, origin, destination));
   const hasSearchCoordinates = originLat && originLng && destinationLat && destinationLng;
   if (hasSearchCoordinates) {
@@ -387,10 +526,20 @@ app.post('/api/bookings', requireAuth, (req, res) => {
     return res.status(409).json({ error: 'Passenger Gov ID verification is required before booking' });
   }
   const seats = asNumber(req.body.seats);
-  if (seats < 1 || ride.seats_available < seats) return res.status(409).json({ error: 'Not enough seats available' });
+  if (seats < 1 || Number(ride.total_seats || 0) < seats) return res.status(409).json({ error: 'Not enough seats available' });
+  if (ride.instant_booking && Number(ride.seats_available || 0) < seats) {
+    return res.status(409).json({ error: 'Not enough seats available' });
+  }
+  const duplicateActiveRequest = store.bookings.some(
+    (booking) =>
+      booking.ride_id === ride.ride_id &&
+      booking.passenger_id === req.user.sub &&
+      ['requested', 'confirmed'].includes(String(booking.status || '').toLowerCase()),
+  );
+  if (duplicateActiveRequest) {
+    return res.status(409).json({ error: 'Booking request already exists for this ride' });
+  }
 
-  ride.seats_available -= seats;
-  ride.status = ride.seats_available === 0 ? 'full' : ride.status;
   const booking = {
     booking_id: nextId(store.bookings, 'booking_id'),
     ride_id: ride.ride_id,
@@ -402,12 +551,15 @@ app.post('/api/bookings', requireAuth, (req, res) => {
     updated_at: new Date().toISOString(),
   };
   store.bookings.unshift(booking);
+  if (ride.instant_booking) {
+    recalculateRideAvailability(ride);
+  }
   persistStore();
 
   const passengerNotification = addNotification({
     userId: req.user.sub,
-    type: 'ride_booked',
-    title: 'Ride booking confirmed',
+    type: ride.instant_booking ? 'ride_booked' : 'ride_requested',
+    title: ride.instant_booking ? 'Ride booking confirmed' : 'Ride request sent',
     message: `Your booking from ${ride.origin} to ${ride.destination} is ${booking.status}.`,
   });
   const driverNotification = addNotification({
@@ -422,6 +574,7 @@ app.post('/api/bookings', requireAuth, (req, res) => {
         full_name: passenger.full_name,
         photo_url: passenger.photo_url,
         phone: passenger.phone,
+        email: passenger.email,
         verification_status: passenger.passenger_verification_status,
         gov_id_number: passenger.gov_id_number,
       },
@@ -443,16 +596,43 @@ app.post('/api/bookings', requireAuth, (req, res) => {
 });
 
 app.get('/api/bookings', requireAuth, (req, res) => {
-  const bookings = store.bookings.filter((booking) => booking.passenger_id === req.user.sub);
-  res.json({ ok: true, ...paginate(bookings, req) });
+  const scope = String(req.query.scope || 'passenger').toLowerCase();
+  let bookings = [];
+  if (req.user.role === 'admin' && scope === 'all') {
+    bookings = store.bookings;
+  } else if (scope === 'owner') {
+    bookings = rideOwnerBookings(req.user.sub);
+  } else {
+    bookings = store.bookings.filter((booking) => booking.passenger_id === req.user.sub);
+  }
+  res.json({ ok: true, ...paginate(bookings.map(publicBooking), req) });
 });
 
 app.patch('/api/bookings/:bookingId', requireAuth, (req, res) => {
   const booking = store.bookings.find((item) => item.booking_id === asNumber(req.params.bookingId));
   if (!booking) return res.status(404).json({ error: 'Booking not found' });
-  booking.status = req.body.status || booking.status;
-  booking.updated_at = new Date().toISOString();
   const ride = store.rides.find((item) => item.ride_id === booking.ride_id);
+  if (!ride) return res.status(404).json({ error: 'Ride not found' });
+  const nextStatus = String(req.body.status || booking.status || '').toLowerCase();
+  const previousStatus = String(booking.status || '').toLowerCase();
+  const isOwner = ride.driver_id === req.user.sub || req.user.role === 'admin';
+  const isPassenger = booking.passenger_id === req.user.sub;
+  if (!isOwner && !isPassenger) return res.status(403).json({ error: 'Not allowed to update this booking' });
+  if (isPassenger && !['cancelled'].includes(nextStatus)) {
+    return res.status(403).json({ error: 'Passenger can only cancel their booking' });
+  }
+  if (isOwner && !['requested', 'confirmed', 'rejected'].includes(nextStatus)) {
+    return res.status(422).json({ error: 'Invalid booking status update' });
+  }
+  if (nextStatus === 'confirmed' && previousStatus !== 'confirmed') {
+    if (Number(ride.seats_available || 0) < Number(booking.seats_booked || 0)) {
+      return res.status(409).json({ error: 'Not enough seats available to confirm this booking' });
+    }
+  }
+
+  booking.status = nextStatus || booking.status;
+  booking.updated_at = new Date().toISOString();
+  recalculateRideAvailability(ride);
   const passengerNotification = addNotification({
     userId: booking.passenger_id,
     type: 'ride_confirmation_updated',
@@ -587,7 +767,19 @@ app.post('/api/messages', requireAuth, (req, res) => {
   const missing = requireFields(req.body, ['rideId', 'message']);
   if (missing.length) return badRequest(res, missing);
   const ride = store.rides.find((item) => item.ride_id === asNumber(req.body.rideId));
-  const booking = store.bookings.find((item) => item.ride_id === asNumber(req.body.rideId));
+  if (!ride) return res.status(404).json({ error: 'Ride not found' });
+  const requestedReceiverId = req.body.receiverId === undefined ? null : asNumber(req.body.receiverId);
+  if (!canAccessRideChat({ ride, userId: req.user.sub, receiverId: requestedReceiverId })) {
+    return res.status(403).json({ error: 'Chat is available only after a ride request or confirmed booking' });
+  }
+  const booking = store.bookings.find((item) => {
+    if (item.ride_id !== asNumber(req.body.rideId)) return false;
+    if (!['requested', 'confirmed'].includes(String(item.status || '').toLowerCase())) return false;
+    if (requestedReceiverId) {
+      return item.passenger_id === requestedReceiverId;
+    }
+    return true;
+  });
   const inferredReceiverId = ride
     ? (ride.driver_id === req.user.sub ? booking?.passenger_id : ride.driver_id)
     : undefined;
@@ -976,7 +1168,7 @@ app.post('/api/payments', requireAuth, async (req, res) => {
   });
 });
 
-app.post('/api/payments/:paymentId/verify', requireAuth, (req, res) => {
+app.post('/api/payments/:paymentId/verify', requireAuth, async (req, res, next) => {
   const payment = store.payments.find((item) => item.payment_id === asNumber(req.params.paymentId) && item.payer_id === req.user.sub);
   if (!payment) return res.status(404).json({ error: 'Payment not found' });
   if (payment.status === 'paid') {
@@ -998,35 +1190,45 @@ app.post('/api/payments/:paymentId/verify', requireAuth, (req, res) => {
     return res.status(422).json({ ok: false, error: 'Payment was not successful', payment });
   }
 
-  if (payment.provider === 'razorpay' && isRazorpayConfigured()) {
-    if (!payment.razorpay_order_id || payment.razorpay_order_id !== razorpayOrderId) {
-      payment.status = 'failed';
-      payment.updated_at = new Date().toISOString();
-      persistStore();
-      return res.status(422).json({ ok: false, error: 'Razorpay order mismatch', payment });
+  try {
+    const result = await reconcilePaymentWithRazorpay(payment, {
+      razorpayPaymentId,
+      razorpayOrderId,
+      razorpaySignature,
+      fallbackStatus: gatewayStatus,
+    });
+    if (!result.ok) {
+      return res.status(422).json({ ok: false, error: result.error || 'Payment was not successful', payment: result.payment });
     }
-
-    if (!razorpaySignature || !verifyRazorpaySignature(payment.razorpay_order_id, razorpayPaymentId, razorpaySignature)) {
-      payment.status = 'failed';
-      payment.razorpay_payment_id = razorpayPaymentId;
-      payment.updated_at = new Date().toISOString();
-      persistStore();
-      return res.status(422).json({ ok: false, error: 'Razorpay signature verification failed', payment });
-    }
+    return res.json({ ok: true, payment: result.payment, walletBalance: result.walletBalance });
+  } catch (error) {
+    next(error);
   }
-
-  payment.status = 'paid';
-  payment.razorpay_payment_id = razorpayPaymentId;
-  payment.razorpay_signature = razorpaySignature || payment.razorpay_signature;
-  payment.updated_at = new Date().toISOString();
-  const user = store.users.find((item) => item.user_id === req.user.sub);
-  if (user) user.wallet_balance = Number(user.wallet_balance || 0) + Number(payment.amount || 0);
-  persistStore();
-  notifyUserMobile(req.user.sub, 'Payment successful', `Payment of INR ${payment.amount} was completed.`);
-  res.json({ ok: true, payment, walletBalance: Number(user?.wallet_balance || 0) });
 });
 
-app.all('/api/payments/razorpay/callback', (req, res) => {
+app.post('/api/payments/:paymentId/reconcile', requireAuth, async (req, res, next) => {
+  const payment = store.payments.find((item) => item.payment_id === asNumber(req.params.paymentId) && item.payer_id === req.user.sub);
+  if (!payment) return res.status(404).json({ error: 'Payment not found' });
+
+  try {
+    const result = await reconcilePaymentWithRazorpay(payment, {
+      razorpayPaymentId: req.body.razorpayPaymentId || req.body.razorpay_payment_id,
+      razorpayOrderId: req.body.razorpayOrderId || req.body.razorpay_order_id,
+      razorpaySignature: req.body.razorpaySignature || req.body.razorpay_signature,
+      fallbackStatus: req.body.status,
+    });
+    return res.json({
+      ok: true,
+      payment: result.payment,
+      walletBalance: result.walletBalance,
+      finalStatus: result.payment?.status || 'pending',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.all('/api/payments/razorpay/callback', async (req, res) => {
   const gatewayStatus = normalizePaymentStatus(req.body.status || req.query.status || '');
   const razorpayPaymentId = req.body.razorpay_payment_id || req.body.razorpayPaymentId || req.query.razorpay_payment_id || req.query.razorpayPaymentId;
   const razorpayOrderId = req.body.razorpay_order_id || req.body.razorpayOrderId || req.query.razorpay_order_id || req.query.razorpayOrderId;
@@ -1034,38 +1236,27 @@ app.all('/api/payments/razorpay/callback', (req, res) => {
 
   const payment = store.payments.find((item) => item.razorpay_order_id === String(razorpayOrderId || '').trim());
   if (!payment) {
-    return res.redirect(buildPaymentsRedirect('failed', '', { reason: 'payment_not_found' }));
+    return res.redirect(buildPaymentsRedirect(req, 'failed', '', { reason: 'payment_not_found' }));
   }
 
-  if (payment.status === 'paid') {
-    return res.redirect(buildPaymentsRedirect('success', payment.payment_id));
-  }
-
-  if (gatewayStatus !== 'paid' || !razorpayPaymentId || !razorpaySignature) {
-    payment.status = gatewayStatus === 'pending' ? 'pending' : gatewayStatus;
-    payment.razorpay_payment_id = razorpayPaymentId || payment.razorpay_payment_id;
-    payment.updated_at = new Date().toISOString();
-    persistStore();
-    return res.redirect(buildPaymentsRedirect(payment.status, payment.payment_id));
-  }
-
-  if (!verifyRazorpaySignature(payment.razorpay_order_id, razorpayPaymentId, razorpaySignature)) {
-    payment.status = 'failed';
-    payment.razorpay_payment_id = razorpayPaymentId;
-    payment.updated_at = new Date().toISOString();
-    persistStore();
-    return res.redirect(buildPaymentsRedirect('failed', payment.payment_id, { reason: 'signature_mismatch' }));
-  }
-
-  payment.status = 'paid';
-  payment.razorpay_payment_id = razorpayPaymentId;
-  payment.razorpay_signature = razorpaySignature;
+  payment.status = 'pending';
+  payment.razorpay_payment_id = razorpayPaymentId || payment.razorpay_payment_id;
+  payment.razorpay_signature = razorpaySignature || payment.razorpay_signature;
   payment.updated_at = new Date().toISOString();
-  const user = store.users.find((item) => item.user_id === payment.payer_id);
-  if (user) user.wallet_balance = Number(user.wallet_balance || 0) + Number(payment.amount || 0);
   persistStore();
-  notifyUserMobile(payment.payer_id, 'Payment successful', `Payment of INR ${payment.amount} was completed.`);
-  return res.redirect(buildPaymentsRedirect('success', payment.payment_id));
+
+  if (razorpayPaymentId) {
+    reconcilePaymentWithRazorpay(payment, {
+      razorpayPaymentId,
+      razorpayOrderId,
+      razorpaySignature,
+      fallbackStatus: gatewayStatus,
+    }).catch((error) => {
+      console.error(`Razorpay callback reconciliation failed for payment ${payment.payment_id}: ${error.message}`);
+    });
+  }
+
+  return res.redirect(buildPaymentsRedirect(req, 'pending', payment.payment_id));
 });
 
 app.get('/api/reviews', requireAuth, (req, res) => {

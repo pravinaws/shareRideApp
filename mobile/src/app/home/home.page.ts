@@ -13,9 +13,11 @@ import {
   arrowBackOutline,
   calendarOutline,
   cameraOutline,
+  businessOutline,
   carOutline,
   cardOutline,
   chatbubbleEllipsesOutline,
+  checkmarkDoneOutline,
   checkmarkCircleOutline,
   chevronForwardOutline,
   closeCircleOutline,
@@ -27,6 +29,8 @@ import {
   eyeOutline,
   flagOutline,
   funnelOutline,
+  gitBranchOutline,
+  shareSocialOutline,
   lockClosedOutline,
   locationOutline,
   mapOutline,
@@ -107,17 +111,39 @@ interface PassengerPublicProfile {
 }
 
 interface BookingRequestDetails {
+  bookingId?: number;
+  rideId?: number;
+  passengerId?: number;
   passengerName: string;
   passengerPhoto: string;
   passengerPhone: string;
+  passengerEmail?: string;
   passengerGovIdNumber: string;
   verified: boolean;
+  seatsBooked?: number;
+  status?: string;
   from: string;
   to: string;
   route: string;
   vehicle: string;
   pickup: string;
   drop: string;
+}
+
+interface ManagedRideItem {
+  id?: number;
+  tab: 'My Published Rides' | 'Past' | 'Archived';
+  driver: string;
+  image: string;
+  route: string;
+  date: string;
+  time: string;
+  price: string;
+  status: string;
+  vehicle?: string;
+  seatsAvailable?: number;
+  totalSeats?: number;
+  bookingRequests?: BookingRequestDetails[];
 }
 
 interface NotificationCenterItem {
@@ -129,6 +155,34 @@ interface NotificationCenterItem {
   icon: string;
   bookingDetails?: BookingRequestDetails;
   action?: 'same_route' | 'messages' | 'vehicles' | 'payments' | 'profile' | 'rides';
+}
+
+interface WalletTransactionItem {
+  title: string;
+  amountValue: number;
+  amountLabel: string;
+  status: string;
+  transactionId: string;
+  timestamp: string;
+}
+
+interface ReferralClaim {
+  code: string;
+  referredPhone: string;
+  referredName: string;
+  reward: number;
+  createdAt: string;
+  creditedToReferrer: boolean;
+  creditedToReferred: boolean;
+}
+
+interface AccountSectionItem {
+  title: string;
+  icon: string;
+  route: string;
+  subtitle?: string;
+  statusText?: string;
+  statusTone?: 'verified' | 'pending';
 }
 
 interface ProfileVehicle {
@@ -314,6 +368,7 @@ export class HomePage {
     email: '',
     phone: '9970795914',
     otp: '',
+    referralCode: '',
     role: 'driver' as 'passenger' | 'driver',
   };
   profileLoading = false;
@@ -337,6 +392,7 @@ export class HomePage {
     emergencyContactPhone: '',
     photoUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=256&q=80',
     bio: 'Clean car, safe driving, and punctual pickup. Prefer verified travellers for office and intercity routes.',
+    referralCode: '',
     memberSince: '2026',
     govIdNumber: '',
     govIdFrontUrl: '',
@@ -825,25 +881,30 @@ export class HomePage {
   private typingTimer?: number;
   private remoteTypingTimer?: number;
   settings = [
-    'Saved payment methods',
     'Identity verification',
     'Notification preferences',
     'Privacy and safety',
   ];
-  rideTabs = ['Upcoming', 'Past', 'Archived'];
-  activeRideTab = 'Upcoming';
-  managedRides = [
+  rideTabs = ['My Published Rides', 'Past', 'Archived'];
+  activeRideTab = 'My Published Rides';
+  managedRides: ManagedRideItem[] = [
     {
-      tab: 'Upcoming',
-      driver: 'Aarav Mehta',
+      id: 1,
+      tab: 'My Published Rides',
+      driver: 'Harshala',
       image: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22 viewBox=%220 0 80 80%22%3E%3Crect width=%2280%22 height=%2280%22 rx=%2224%22 fill=%22%23001F3F%22/%3E%3Ctext x=%2240%22 y=%2248%22 text-anchor=%22middle%22 font-family=%22Arial%22 font-size=%2228%22 font-weight=%22700%22 fill=%22white%22%3EAM%3C/text%3E%3C/svg%3E',
       route: 'Bengaluru to Mysuru',
       date: 'Today',
       time: '08:30 AM',
       price: 'INR 420',
-      status: 'Confirmed',
+      status: 'Published',
+      vehicle: 'Hyundai Verna',
+      seatsAvailable: 3,
+      totalSeats: 4,
+      bookingRequests: [],
     },
     {
+      id: 2,
       tab: 'Past',
       driver: 'Nisha Rao',
       image: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22 viewBox=%220 0 80 80%22%3E%3Crect width=%2280%22 height=%2280%22 rx=%2224%22 fill=%22%23123E68%22/%3E%3Ctext x=%2240%22 y=%2248%22 text-anchor=%22middle%22 font-family=%22Arial%22 font-size=%2228%22 font-weight=%22700%22 fill=%22white%22%3ENR%3C/text%3E%3C/svg%3E',
@@ -874,14 +935,24 @@ export class HomePage {
       seen: true,
     },
   ];
-  payments = [
-    { brand: 'Visa', last4: '4242', label: 'Primary card', status: 'Active' },
-    { brand: 'UPI', last4: 'harshala@upi', label: 'Fast refunds', status: 'Verified' },
-  ];
   private lastHandledPaymentRedirect = '';
+  private readonly referralRewardStorageKey = 'rideshare.referralRewardAmount';
+  private readonly referralClaimsStorageKey = 'rideshare.referralClaims';
   walletBalance = 2480;
   walletTopUpAmount = 500;
   readonly quickWalletAmounts = [100, 500, 1000];
+  adminReferralRewardAmount = 100;
+  referralClaims: ReferralClaim[] = [];
+  withdrawDialogOpen = false;
+  withdrawalProcessing = false;
+  withdrawForm = {
+    accountHolderName: '',
+    bankName: '',
+    accountNumber: '',
+    confirmAccountNumber: '',
+    ifscCode: '',
+    amount: null as number | null,
+  };
   rideDetailsBackRoute = '/results';
   selectedBookingRequest: BookingRequestDetails | null = null;
   ownerProfileOpen = false;
@@ -889,9 +960,23 @@ export class HomePage {
   selectedRideMode: 'active' | 'past' = 'active';
   pastRideRating = 0;
   pastRideFeedback = '';
-  transactions = [
-    { title: 'Mysuru ride booking', amount: '- INR 420', status: 'Payment success', date: 'Today' },
-    { title: 'Airport ride refund', amount: '+ INR 180', status: 'Refund initiated', date: '5 May' },
+  transactions: WalletTransactionItem[] = [
+    {
+      title: 'Razorpay wallet top-up',
+      amountValue: 500,
+      amountLabel: '+ INR 500',
+      status: 'Paid',
+      transactionId: '4927600101',
+      timestamp: '14 May, 04:27 AM',
+    },
+    {
+      title: 'Razorpay wallet top-up',
+      amountValue: 111,
+      amountLabel: 'INR 111',
+      status: 'Failed',
+      transactionId: '4927000202',
+      timestamp: '14 May, 04:26 AM',
+    },
   ];
   notificationCenter: NotificationCenterItem[] = [
     { type: 'Ride booked', title: 'Ride booking confirmed', message: 'Your seat to Mysuru is confirmed.', time: 'Now', unread: true, icon: 'checkmark-circle-outline' },
@@ -906,43 +991,18 @@ export class HomePage {
     { type: 'Payment success', title: 'Payment successful', message: 'INR 420 was paid securely.', time: '3h', unread: false, icon: 'wallet-outline' },
     { type: 'Rating reminder', title: 'Rate your ride', message: 'Tell us about your last trip.', time: 'Yesterday', unread: false, icon: 'star-outline' },
   ];
-  accountSections = [
-    { title: 'Personal details', icon: 'person-circle-outline', route: '/profile' },
-    { title: 'Admin dashboard', icon: 'settings-outline', route: '/admin' },
-    { title: 'Payments', icon: 'wallet-outline', route: '/payments' },
-    { title: 'Notifications', icon: 'notifications-outline', route: '/notifications' },
-    { title: 'Security', icon: 'lock-closed-outline', route: '/settings' },
-    { title: 'Privacy', icon: 'shield-checkmark-outline', route: '/settings' },
+  accountSections: AccountSectionItem[] = [
+    { title: 'Personal details', icon: 'person-circle-outline', route: '/profile', subtitle: 'Profile info and contact details' },
+    { title: 'KYC', icon: 'shield-checkmark-outline', route: '/kyc' },
+    { title: 'My Vehicle', icon: 'car-outline', route: '/vehicles' },
+    { title: 'Referral', icon: 'git-branch-outline', route: '/referral' },
+    { title: 'Payments', icon: 'wallet-outline', route: '/payments', subtitle: 'Wallet, add money, and withdrawals' },
+    { title: 'Notifications', icon: 'notifications-outline', route: '/notifications', subtitle: 'Alerts and updates' },
+    { title: 'Security', icon: 'lock-closed-outline', route: '/settings', subtitle: 'Account protection' },
+    { title: 'Privacy', icon: 'shield-checkmark-outline', route: '/settings', subtitle: 'Permissions and visibility' },
     { title: 'Dark mode', icon: 'moon-outline', route: '/settings' },
   ];
-  vehicles = [
-    {
-      vehicleId: 1,
-      make: 'Hyundai',
-      model: 'Verna',
-      color: 'White',
-      plateNumber: 'KA 05 MK 2281',
-      seats: 4,
-      status: 'verified',
-      rcDocumentUrl: 'RC uploaded',
-      insuranceDocumentUrl: 'Insurance uploaded',
-      frontPhotoUrl: 'Front photo uploaded',
-      backPhotoUrl: 'Back photo uploaded',
-    },
-    {
-      vehicleId: 2,
-      make: 'Maruti',
-      model: 'Baleno',
-      color: 'Blue',
-      plateNumber: 'KA 03 NR 4108',
-      seats: 4,
-      status: 'pending',
-      rcDocumentUrl: 'RC uploaded',
-      insuranceDocumentUrl: 'Insurance uploaded',
-      frontPhotoUrl: 'Front photo uploaded',
-      backPhotoUrl: 'Back photo uploaded',
-    },
-  ] as ProfileVehicle[];
+  vehicles = [] as ProfileVehicle[];
   notificationFlow = [
     { title: 'Ride requested', status: 'Queued', tone: 'pending' },
     { title: 'Driver accepted', status: 'Push sent', tone: 'success' },
@@ -1264,17 +1324,23 @@ export class HomePage {
     route: 'Bengaluru Central to Mysuru Palace Road',
   };
   publishRideForm = {
+    vehicleId: 0,
     departure: 'Bengaluru Central',
     destination: 'Mysuru Palace Road',
+    departureLat: 12.9716,
+    departureLng: 77.5946,
+    destinationLat: 12.2958,
+    destinationLng: 76.6394,
+    allowedPassengers: 3,
+    backpackAllowed: true,
+    bigTrolleyAllowed: false,
   };
   stops = ['Mandya Bypass'];
   mapEmbedUrl: SafeResourceUrl;
   publishFlowStep = 2;
   rideSetup = {
-    seats: 3,
     pricePerSeat: 420,
-    luggageAllowed: true,
-    instantBooking: true,
+    instantBooking: false,
   };
   travelPreferences = {
     smokingAllowed: false,
@@ -1303,6 +1369,8 @@ export class HomePage {
   ) {
     this.mapEmbedUrl = this.buildRouteMapUrl(this.selectedRide.pickup, this.selectedRide.drop);
     this.currentRouteValue = this.normalizeRoute(this.router.url);
+    this.hydrateReferralState();
+    this.applyReferralParamsFromUrl(this.router.url);
 
     addIcons({
       addCircleOutline,
@@ -1311,9 +1379,11 @@ export class HomePage {
       arrowBackOutline,
       calendarOutline,
       cameraOutline,
+      businessOutline,
       carOutline,
       cardOutline,
       chatbubbleEllipsesOutline,
+      checkmarkDoneOutline,
       checkmarkCircleOutline,
       chevronForwardOutline,
       closeCircleOutline,
@@ -1325,6 +1395,8 @@ export class HomePage {
       eyeOutline,
       flagOutline,
       funnelOutline,
+      gitBranchOutline,
+      shareSocialOutline,
       lockClosedOutline,
       locationOutline,
       mapOutline,
@@ -1353,6 +1425,7 @@ export class HomePage {
       .pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd))
       .subscribe((event) => {
         this.currentRouteValue = this.normalizeRoute(event.urlAfterRedirects);
+        this.applyReferralParamsFromUrl(event.urlAfterRedirects);
         if (this.currentRouteValue === '/profile') {
           this.loadProfile();
         }
@@ -1407,6 +1480,11 @@ export class HomePage {
       role: user.role || this.profile.role,
       verificationStatus: user.verification_status || this.profile.verificationStatus,
     };
+    if (this.calculatedProfileAge) {
+      this.profile.age = this.calculatedProfileAge;
+    }
+    this.ensureReferralCode();
+    this.syncReferralRewardsForCurrentUser();
     this.realtime.connect();
     if (this.currentRouteValue === '/login') {
       this.currentRouteValue = '/search';
@@ -1453,7 +1531,9 @@ export class HomePage {
     if (
       this.currentRoute === '/login' ||
       this.currentRoute === '/profile' ||
+      this.currentRoute === '/kyc' ||
       this.currentRoute === '/vehicles' ||
+      this.currentRoute === '/referral' ||
       this.currentRoute === '/settings' ||
       this.currentRoute === '/admin' ||
       this.currentRoute === '/payments' ||
@@ -1476,8 +1556,12 @@ export class HomePage {
   refreshCurrentScreen(event?: CustomEvent) {
     this.liveActivity = 'Refreshing latest app data...';
     if (this.auth.isAuthenticated && this.auth.token !== 'demo-token') {
-      if (['/profile', '/vehicles', '/settings', '/payments', '/notifications'].includes(this.currentRoute)) {
+      if (['/profile', '/kyc', '/vehicles', '/referral', '/settings', '/payments', '/notifications'].includes(this.currentRoute)) {
         this.loadProfile();
+      }
+      if (this.currentRoute === '/your-rides') {
+        this.loadPublishedRides();
+        this.loadOwnerBookingRequests();
       }
       if (this.currentRoute === '/inbox') this.loadConversations();
       if (this.currentRoute === '/chat') this.loadChatHistory();
@@ -1517,13 +1601,248 @@ export class HomePage {
     return this.vehicles.some((vehicle) => vehicle.vehicleId && this.isVehicleVerified(vehicle));
   }
 
+  get verifiedPublishVehicles() {
+    return this.vehicles.filter((vehicle) => vehicle.vehicleId && this.isVehicleVerified(vehicle));
+  }
+
+  get selectedPublishVehicle() {
+    return this.vehicles.find((vehicle) => Number(vehicle.vehicleId) === Number(this.publishRideForm.vehicleId)) || null;
+  }
+
   get canPublishRide() {
     return this.profile.verificationStatus === 'verified' && this.hasVerifiedPublishVehicle;
+  }
+
+  get canContinuePublishDetails() {
+    return Boolean(
+      this.selectedPublishVehicle?.vehicleId &&
+      this.publishRideForm.departure.trim() &&
+      this.publishRideForm.destination.trim() &&
+      Number(this.publishRideForm.allowedPassengers) > 0,
+    );
   }
 
   get passengerVerificationLabel() {
     const status = this.profile.passengerVerificationStatus;
     return status === 'verified' ? 'Verified' : status === 'rejected' ? 'Rejected' : 'Pending verification';
+  }
+
+  get myVehicleMenuStatus() {
+    if (!this.vehicles.length) return 'Not added';
+    return this.vehicles.some((vehicle) => this.isVehicleVerified(vehicle)) ? 'Verified' : 'Pending';
+  }
+
+  get currentReferralCode() {
+    this.ensureReferralCode();
+    return this.profile.referralCode;
+  }
+
+  get calculatedProfileAge() {
+    return this.calculateAgeFromBirthDate(this.profile.birthDate);
+  }
+
+  get profileAgeText() {
+    return this.calculatedProfileAge ? `${this.calculatedProfileAge} years` : 'Age not added';
+  }
+
+  get referralLink() {
+    const origin = window.location.origin && window.location.origin !== 'null' ? window.location.origin : 'http://localhost:4200';
+    return `${origin}/login?mode=signup&ref=${encodeURIComponent(this.currentReferralCode)}`;
+  }
+
+  accountSectionMeta(section: AccountSectionItem) {
+    if (section.title === 'Dark mode') {
+      return {
+        subtitle: this.isDark ? 'Enabled' : 'Disabled',
+        statusText: '',
+        statusTone: 'pending' as const,
+      };
+    }
+    if (section.title === 'KYC') {
+      return {
+        subtitle: 'Passenger Gov ID verification',
+        statusText: this.isPassengerVerified ? 'Verified' : 'Pending',
+        statusTone: this.isPassengerVerified ? 'verified' as const : 'pending' as const,
+      };
+    }
+    if (section.title === 'My Vehicle') {
+      return {
+        subtitle: this.vehicles.length ? `${this.vehicles.length}/2 vehicle${this.vehicles.length > 1 ? 's' : ''} added` : 'Add and manage your vehicle',
+        statusText: this.myVehicleMenuStatus,
+        statusTone: this.myVehicleMenuStatus === 'Verified' ? 'verified' as const : 'pending' as const,
+      };
+    }
+    if (section.title === 'Referral') {
+      return {
+        subtitle: `Invite and earn INR ${this.adminReferralRewardAmount} per successful signup`,
+        statusText: this.currentReferralCode,
+        statusTone: 'verified' as const,
+      };
+    }
+    return {
+      subtitle: section.subtitle || '',
+      statusText: section.statusText || '',
+      statusTone: section.statusTone || 'pending',
+    };
+  }
+
+  private hydrateReferralState() {
+    const storedAmount = Number(localStorage.getItem(this.referralRewardStorageKey) || 0);
+    if (storedAmount > 0) {
+      this.adminReferralRewardAmount = storedAmount;
+    }
+    try {
+      const claims = JSON.parse(localStorage.getItem(this.referralClaimsStorageKey) || '[]');
+      this.referralClaims = Array.isArray(claims) ? claims : [];
+    } catch {
+      this.referralClaims = [];
+    }
+    this.ensureReferralCode();
+  }
+
+  private persistReferralClaims() {
+    localStorage.setItem(this.referralClaimsStorageKey, JSON.stringify(this.referralClaims));
+  }
+
+  private ensureReferralCode() {
+    if (this.profile.referralCode) return;
+    this.profile.referralCode = this.buildReferralCode(this.profile.fullName, this.profile.phone);
+  }
+
+  private buildReferralCode(name: string, phone: string) {
+    const initials = String(name || 'RS')
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.charAt(0).toUpperCase())
+      .join('');
+    const digits = String(phone || '').replace(/\D/g, '').slice(-4).padStart(4, '0');
+    return `${initials || 'RS'}${digits}`;
+  }
+
+  private applyReferralParamsFromUrl(url: string) {
+    if (this.normalizeRoute(url) !== '/login') return;
+    const params = new URLSearchParams(window.location.search || '');
+    const mode = String(params.get('mode') || '').toLowerCase();
+    const ref = this.normalizeReferralCode(params.get('ref') || '');
+    if (mode === 'signup' || ref) {
+      this.authMode = 'signup';
+      this.otpSent = false;
+    }
+    if (ref) {
+      this.loginForm.referralCode = ref;
+    }
+  }
+
+  private normalizeReferralCode(value: string) {
+    return String(value || '').replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 12);
+  }
+
+  async copyReferralCode() {
+    try {
+      await navigator.clipboard.writeText(this.currentReferralCode);
+      await this.presentToast('Referral code copied');
+    } catch {
+      await this.presentToast(this.currentReferralCode);
+    }
+  }
+
+  async copyReferralLink() {
+    try {
+      await navigator.clipboard.writeText(this.referralLink);
+      await this.presentToast('Referral link copied');
+    } catch {
+      await this.presentToast(this.referralLink);
+    }
+  }
+
+  async shareReferralLink() {
+    const shareData = {
+      title: 'Join RideShare',
+      text: `Sign up on RideShare with my referral code ${this.currentReferralCode} and earn INR ${this.adminReferralRewardAmount}.`,
+      url: this.referralLink,
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        await this.presentToast('Referral link shared');
+        return;
+      }
+      await this.copyReferralLink();
+    } catch {
+      await this.copyReferralLink();
+    }
+  }
+
+  private calculateAgeFromBirthDate(value: string) {
+    if (!value) return null;
+    const birthDate = new Date(value);
+    if (Number.isNaN(birthDate.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDifference = today.getMonth() - birthDate.getMonth();
+    if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birthDate.getDate())) {
+      age -= 1;
+    }
+    return age >= 0 ? age : null;
+  }
+
+  saveAdminReferralSettings() {
+    this.adminReferralRewardAmount = Math.max(0, Math.round(Number(this.adminReferralRewardAmount || 0)));
+    localStorage.setItem(this.referralRewardStorageKey, String(this.adminReferralRewardAmount));
+    this.presentToast(`Referral reward set to INR ${this.adminReferralRewardAmount}`);
+  }
+
+  private registerReferralClaim() {
+    const code = this.normalizeReferralCode(this.loginForm.referralCode);
+    if (this.authMode !== 'signup' || !code) return;
+    const phone = String(this.loginForm.phone || '').replace(/\D/g, '').slice(-10);
+    if (!phone) return;
+    if (code === this.buildReferralCode(this.loginForm.fullName || 'User', phone)) return;
+    if (!this.referralClaims.some((claim) => claim.code === code && claim.referredPhone === phone)) {
+      this.referralClaims = [
+        {
+          code,
+          referredPhone: phone,
+          referredName: this.loginForm.fullName || 'New user',
+          reward: this.adminReferralRewardAmount,
+          createdAt: new Date().toISOString(),
+          creditedToReferrer: false,
+          creditedToReferred: false,
+        },
+        ...this.referralClaims,
+      ];
+      this.persistReferralClaims();
+    }
+  }
+
+  private syncReferralRewardsForCurrentUser() {
+    const currentPhone = String(this.profile.phone || this.loginForm.phone || '').replace(/\D/g, '').slice(-10);
+    const referralCode = this.currentReferralCode;
+    let walletDelta = 0;
+    let changed = false;
+    this.referralClaims = this.referralClaims.map((claim) => {
+      let nextClaim = { ...claim };
+      if (!nextClaim.creditedToReferred && currentPhone && nextClaim.referredPhone === currentPhone) {
+        walletDelta += nextClaim.reward;
+        this.prependWalletTransaction('Referral bonus received', nextClaim.reward, 'Paid', nextClaim.createdAt);
+        nextClaim.creditedToReferred = true;
+        changed = true;
+      }
+      if (!nextClaim.creditedToReferrer && referralCode && nextClaim.code === referralCode) {
+        walletDelta += nextClaim.reward;
+        this.prependWalletTransaction('Referral bonus earned', nextClaim.reward, 'Paid', nextClaim.createdAt);
+        nextClaim.creditedToReferrer = true;
+        changed = true;
+      }
+      return nextClaim;
+    });
+    if (walletDelta) {
+      this.walletBalance += walletDelta;
+    }
+    if (changed) {
+      this.persistReferralClaims();
+    }
   }
 
   get adminKpis() {
@@ -1597,8 +1916,8 @@ export class HomePage {
           this.profile = {
             ...this.profile,
             fullName: user.full_name || this.profile.fullName,
-            age: user.age || this.profile.age,
             birthDate: user.birth_date || this.profile.birthDate,
+            age: this.calculateAgeFromBirthDate(user.birth_date || this.profile.birthDate) || Number(user.age || this.profile.age),
             rating: Number(user.rating || this.profile.rating),
             role: user.role || this.profile.role,
             verificationStatus: user.verification_status || this.profile.verificationStatus,
@@ -1613,6 +1932,7 @@ export class HomePage {
             emergencyContactPhone: user.emergency_contact_phone || this.profile.emergencyContactPhone,
             photoUrl: user.photo_url || this.profile.photoUrl,
             bio: user.bio || this.profile.bio,
+            referralCode: user.referral_code || this.profile.referralCode || this.buildReferralCode(user.full_name || this.profile.fullName, user.phone || this.profile.phone),
             memberSince: user.created_at ? new Date(user.created_at).getFullYear().toString() : this.profile.memberSince,
             govIdNumber: user.gov_id_number || this.profile.govIdNumber,
             govIdFrontUrl: user.gov_id_front_url || this.profile.govIdFrontUrl,
@@ -1639,7 +1959,11 @@ export class HomePage {
                 frontPhotoUrl: vehicle.front_photo_url || vehicle.frontPhotoUrl,
                 backPhotoUrl: vehicle.back_photo_url || vehicle.backPhotoUrl,
               }))
-            : this.vehicles;
+            : [];
+          this.ensurePublishVehicleSelection();
+          this.loadPublishedRides();
+          this.loadOwnerBookingRequests();
+          this.syncReferralRewardsForCurrentUser();
         },
         error: () => {
           this.profileLoading = false;
@@ -1682,15 +2006,99 @@ export class HomePage {
         if (data.length) {
           this.transactions = data.map((payment: any) => ({
             title: payment.provider === 'razorpay' ? 'Razorpay wallet top-up' : 'Wallet transaction',
-            amount: `${payment.status === 'paid' ? '+' : ''} INR ${Number(payment.amount || 0)}`,
             status: this.formatPaymentStatus(payment.status),
-            date: payment.updated_at
-              ? new Date(payment.updated_at).toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
-              : payment.created_at
-                ? new Date(payment.created_at).toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
-                : 'Now',
+            amountValue: Number(payment.amount || 0),
+            amountLabel: `${String(payment.status || '').toLowerCase() === 'paid' ? '+ ' : ''}INR ${Number(payment.amount || 0)}`,
+            timestamp: this.formatPaymentTimestamp(payment.updated_at || payment.created_at),
+            transactionId: this.buildPaymentTransactionId(payment),
           }));
         }
+        this.syncReferralRewardsForCurrentUser();
+      },
+      error: () => undefined,
+    });
+  }
+
+  private ensurePublishVehicleSelection() {
+    if (this.selectedPublishVehicle?.vehicleId) return;
+    const firstVerifiedVehicle = this.verifiedPublishVehicles[0];
+    if (firstVerifiedVehicle?.vehicleId) {
+      this.publishRideForm.vehicleId = Number(firstVerifiedVehicle.vehicleId);
+    }
+  }
+
+  private loadPublishedRides() {
+    if (!this.auth.isAuthenticated || this.auth.token === 'demo-token') return;
+    this.api.getRides({ scope: 'owner' }).subscribe({
+      next: (response: any) => {
+        const rides = Array.isArray(response.data) ? response.data : [];
+        if (!rides.length) return;
+        const mappedPublishedRides: ManagedRideItem[] = rides.map((ride: any) => {
+          const vehicle = this.vehicles.find((item) => Number(item.vehicleId) === Number(ride.vehicle_id));
+          const departureDate = ride.departure_at ? new Date(ride.departure_at) : null;
+          return {
+            id: ride.ride_id,
+            tab: 'My Published Rides',
+            driver: this.profile.fullName,
+            image: this.currentUserAvatar,
+            route: `${ride.origin} to ${ride.destination}`,
+            date: departureDate ? departureDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Today',
+            time: departureDate ? departureDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '08:30 AM',
+            price: `INR ${Number(ride.price_per_seat || this.rideSetup.pricePerSeat)}`,
+            status: String(ride.status || 'published').replace(/^./, (value: string) => value.toUpperCase()),
+            vehicle: vehicle ? `${vehicle.make} ${vehicle.model}` : 'Verified vehicle',
+            seatsAvailable: Number(ride.seats_available ?? 0),
+            totalSeats: Number(ride.total_seats ?? 0),
+            bookingRequests: [],
+          };
+        });
+        this.managedRides = [
+          ...mappedPublishedRides,
+          ...this.managedRides.filter((ride) => ride.tab !== 'My Published Rides'),
+        ];
+      },
+      error: () => undefined,
+    });
+  }
+
+  private loadOwnerBookingRequests() {
+    if (!this.auth.isAuthenticated || this.auth.token === 'demo-token') return;
+    this.api.getBookings({ scope: 'owner' }).subscribe({
+      next: (response: any) => {
+        const bookings = Array.isArray(response.data) ? response.data : [];
+        const bookingMap = new Map<number, BookingRequestDetails[]>();
+        bookings.forEach((booking: any) => {
+          const ride = booking.ride || {};
+          const vehicle = booking.vehicle || {};
+          const passenger = booking.passenger || {};
+          const details: BookingRequestDetails = {
+            bookingId: booking.booking_id,
+            rideId: booking.ride_id,
+            passengerId: passenger.user_id,
+            passengerName: passenger.full_name || 'Passenger',
+            passengerPhoto: passenger.photo_url || this.avatarForName(passenger.full_name || 'Passenger'),
+            passengerPhone: passenger.phone || '',
+            passengerEmail: passenger.email || '',
+            passengerGovIdNumber: passenger.gov_id_number || 'Not shared',
+            verified: passenger.verification_status === 'verified',
+            seatsBooked: Number(booking.seats_booked || 1),
+            status: booking.status || 'requested',
+            from: ride.pickup_point || ride.origin || '',
+            to: ride.drop_point || ride.destination || '',
+            route: `${ride.origin || ''} to ${ride.destination || ''}`.trim(),
+            vehicle: `${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Vehicle not found',
+            pickup: ride.pickup_point || ride.origin || '',
+            drop: ride.drop_point || ride.destination || '',
+          };
+          const rideId = Number(booking.ride_id || 0);
+          if (!bookingMap.has(rideId)) bookingMap.set(rideId, []);
+          bookingMap.get(rideId)?.push(details);
+        });
+
+        this.managedRides = this.managedRides.map((ride) => ({
+          ...ride,
+          bookingRequests: bookingMap.get(Number(ride.id || 0)) || [],
+        }));
       },
       error: () => undefined,
     });
@@ -1700,6 +2108,55 @@ export class HomePage {
     const normalized = String(status || '').trim().toLowerCase();
     if (!normalized) return 'Pending';
     return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  }
+
+  private formatPaymentTimestamp(value: string) {
+    if (!value) return 'Now';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Now';
+    return date.toLocaleString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  }
+
+  private buildPaymentTransactionId(payment: any) {
+    const rawDate = payment.updated_at || payment.created_at;
+    const date = rawDate ? new Date(rawDate) : new Date();
+    const millis = Number.isNaN(date.getTime()) ? Date.now() : date.getTime();
+    const timestampPart = String(millis).slice(-8);
+    const idPart = String(payment.payment_id || payment.id || 0)
+      .replace(/\D/g, '')
+      .slice(-2)
+      .padStart(2, '0');
+    return `${timestampPart}${idPart}`;
+  }
+
+  private buildTimestampTransactionId(value: string) {
+    const date = new Date(value);
+    const millis = Number.isNaN(date.getTime()) ? Date.now() : date.getTime();
+    return String(millis).slice(-10);
+  }
+
+  private prependWalletTransaction(title: string, amount: number, status: string, timestampSource = new Date().toISOString()) {
+    const transactionId = this.buildTimestampTransactionId(timestampSource);
+    if (this.transactions.some((transaction) => transaction.transactionId === transactionId && transaction.title === title)) {
+      return;
+    }
+    this.transactions = [
+      {
+        title,
+        amountValue: amount,
+        amountLabel: `${amount > 0 ? '+ ' : ''}INR ${Math.abs(amount)}`,
+        status,
+        transactionId,
+        timestamp: this.formatPaymentTimestamp(timestampSource),
+      },
+      ...this.transactions,
+    ];
   }
 
   private handlePaymentRedirectState() {
@@ -1712,6 +2169,38 @@ export class HomePage {
     const redirectKey = `${paymentStatus}:${paymentId || ''}:${window.location.search}`;
     if (this.lastHandledPaymentRedirect === redirectKey) return;
     this.lastHandledPaymentRedirect = redirectKey;
+
+    if (paymentStatus === 'pending' && paymentId) {
+      this.walletProcessing = true;
+      this.appLoading = true;
+      this.api.reconcilePayment(Number(paymentId), { status: 'pending' }).subscribe({
+        next: (response: any) => {
+          this.walletProcessing = false;
+          this.appLoading = false;
+          if (response.walletBalance !== undefined) this.walletBalance = Number(response.walletBalance || 0);
+          this.loadPayments();
+          const finalStatus = String(response.finalStatus || response.payment?.status || 'pending').toLowerCase();
+          if (finalStatus === 'paid') {
+            this.presentToast('Payment successful. Wallet updated.');
+          } else if (finalStatus === 'failed') {
+            this.presentToast('Payment failed. Wallet not updated.');
+          } else if (finalStatus === 'cancelled') {
+            this.presentToast('Payment cancelled. Wallet not updated.');
+          } else {
+            this.presentToast('Payment is pending. Wallet will update after Razorpay confirms it.');
+          }
+          this.router.navigateByUrl('/payments', { replaceUrl: true });
+        },
+        error: (error) => {
+          this.walletProcessing = false;
+          this.appLoading = false;
+          this.loadPayments();
+          this.presentToast(error?.error?.error || 'Unable to check Razorpay payment status');
+          this.router.navigateByUrl('/payments', { replaceUrl: true });
+        },
+      });
+      return;
+    }
 
     this.walletProcessing = false;
     this.appLoading = false;
@@ -1740,7 +2229,7 @@ export class HomePage {
     this.http
       .patch(`${this.apiUrl}/users/me`, {
         full_name: this.profile.fullName,
-        age: this.profile.age,
+        age: this.calculatedProfileAge || this.profile.age,
         birth_date: this.profile.birthDate,
         email: this.profile.email,
         address: this.profile.address,
@@ -2085,10 +2574,20 @@ export class HomePage {
 
     this.loginSubmitting = true;
     this.liveActivity = 'Verifying OTP...';
-    this.auth.login(this.loginForm.phone, this.loginForm.otp, this.loginForm.role, this.loginForm.fullName, this.loginForm.email).subscribe({
+    this.auth.login(
+      this.loginForm.phone,
+      this.loginForm.otp,
+      this.loginForm.role,
+      this.authMode === 'signup' ? this.loginForm.fullName : undefined,
+      this.authMode === 'signup' ? this.loginForm.email : undefined,
+      this.authMode,
+      this.authMode === 'signup' ? this.normalizeReferralCode(this.loginForm.referralCode) : undefined,
+    ).subscribe({
       next: () => {
         this.loginSubmitting = false;
         this.isLoggedIn = true;
+        this.profile.phone = `+91${this.loginForm.phone}`;
+        this.registerReferralClaim();
         this.restoreAuthenticatedSession();
         this.stopOtpResendTimer();
         this.liveActivity = 'WhatsApp OTP verified · realtime session started';
@@ -2183,22 +2682,28 @@ export class HomePage {
     }
 
     this.api.bookRide({ rideId: ride.id || 1, seats: 1 }).subscribe({
-      next: () => {
+      next: (response: any) => {
         this.viewRide(ride);
-        this.addCurrentPassengerToSelectedRide();
-        this.sendBookingReceivedNotification(ride);
-        this.presentToast(`Seat request sent to ${ride.driver}`);
+        const bookingStatus = String(response?.booking?.status || 'requested').toLowerCase();
+        if (bookingStatus === 'confirmed') {
+          this.addCurrentPassengerToSelectedRide();
+          this.presentToast(`Booking confirmed with ${ride.driver}`);
+        } else {
+          this.presentToast(`Seat request sent to ${ride.driver}`);
+        }
+        this.loadOwnerBookingRequests();
       },
       error: (error) => {
-        this.viewRide(ride);
-        this.addCurrentPassengerToSelectedRide();
-        this.sendBookingReceivedNotification(ride);
-        this.presentToast(error.error?.error || `Seat request sent to ${ride.driver}`);
+        this.presentToast(error.error?.error || `Unable to send seat request to ${ride.driver}`);
       },
     });
   }
 
   messageDriver() {
+    if (!this.selectedRide.id) {
+      this.presentToast('Chat becomes available after a booking request is sent');
+      return;
+    }
     this.presentToast(`Opening chat with ${this.selectedRide.driver}`);
     this.goTo('/chat');
     this.loadChatHistory();
@@ -2344,6 +2849,84 @@ export class HomePage {
     this.walletTopUpAmount = amount;
   }
 
+  openWithdrawDialog() {
+    if (!this.auth.isAuthenticated || this.auth.token === 'demo-token') {
+      this.presentToast('Login is required for wallet withdrawal');
+      return;
+    }
+    this.withdrawForm = {
+      accountHolderName: this.profile.fullName || '',
+      bankName: '',
+      accountNumber: '',
+      confirmAccountNumber: '',
+      ifscCode: '',
+      amount: null,
+    };
+    this.withdrawDialogOpen = true;
+  }
+
+  closeWithdrawDialog() {
+    if (this.withdrawalProcessing) return;
+    this.withdrawDialogOpen = false;
+  }
+
+  processWalletWithdrawal() {
+    const accountHolderName = this.withdrawForm.accountHolderName.trim();
+    const bankName = this.withdrawForm.bankName.trim();
+    const accountNumber = String(this.withdrawForm.accountNumber || '').replace(/\D/g, '');
+    const confirmAccountNumber = String(this.withdrawForm.confirmAccountNumber || '').replace(/\D/g, '');
+    const ifscCode = String(this.withdrawForm.ifscCode || '').trim().toUpperCase();
+    const amount = Number(this.withdrawForm.amount || 0);
+
+    if (!accountHolderName || !bankName) {
+      this.presentToast('Enter account holder name and bank name');
+      return;
+    }
+    if (accountNumber.length < 9 || accountNumber.length > 18) {
+      this.presentToast('Enter valid bank account number');
+      return;
+    }
+    if (accountNumber !== confirmAccountNumber) {
+      this.presentToast('Confirm account number does not match');
+      return;
+    }
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifscCode)) {
+      this.presentToast('Enter valid IFSC code');
+      return;
+    }
+    if (!amount || amount < 1) {
+      this.presentToast('Enter valid withdrawal amount');
+      return;
+    }
+    if (amount > this.walletBalance) {
+      this.presentToast('Withdrawal amount exceeds wallet balance');
+      return;
+    }
+
+    this.withdrawalProcessing = true;
+    this.walletProcessing = true;
+
+    window.setTimeout(() => {
+      const timestampSource = new Date().toISOString();
+      this.walletBalance = Math.max(0, this.walletBalance - amount);
+      this.transactions = [
+        {
+          title: 'Wallet withdrawal',
+          amountValue: -amount,
+          amountLabel: `INR ${amount}`,
+          status: 'Paid',
+          transactionId: this.buildTimestampTransactionId(timestampSource),
+          timestamp: this.formatPaymentTimestamp(timestampSource),
+        },
+        ...this.transactions,
+      ];
+      this.withdrawalProcessing = false;
+      this.walletProcessing = false;
+      this.withdrawDialogOpen = false;
+      this.presentToast(`Withdrawal processed to ${bankName} via Razorpay`);
+    }, 900);
+  }
+
   topUpWallet() {
     const amount = Number(this.walletTopUpAmount);
     if (!amount || amount < 1) {
@@ -2423,10 +3006,9 @@ export class HomePage {
         razorpayPaymentId: response?.error?.metadata?.payment_id,
         razorpayOrderId: response?.error?.metadata?.order_id,
       }).subscribe({
-        next: () => this.loadPayments(),
-        error: () => this.loadPayments(),
+        next: () => this.redirectToPaymentPending(payment.payment_id),
+        error: () => this.redirectToPaymentPending(payment.payment_id),
       });
-      this.presentToast(response?.error?.description || 'Payment failed. Wallet not updated.');
     });
     checkout.open();
   }
@@ -2443,7 +3025,7 @@ export class HomePage {
         this.appLoading = false;
         this.walletBalance = Number(response.walletBalance || this.walletBalance);
         this.loadPayments();
-        this.presentToast('Payment successful. Wallet updated.');
+        this.redirectToPaymentPending(paymentId);
       },
       error: (error) => {
         this.walletProcessing = false;
@@ -2451,6 +3033,10 @@ export class HomePage {
         this.presentToast(error?.error?.error || 'Payment verification failed');
       },
     });
+  }
+
+  private redirectToPaymentPending(paymentId: number) {
+    this.router.navigateByUrl(`/payments?paymentStatus=pending&paymentId=${paymentId}`, { replaceUrl: true });
   }
 
   private loadRazorpayScript() {
@@ -2552,7 +3138,7 @@ export class HomePage {
   }
 
   viewSameRouteRidesFromNotification() {
-    this.activeRideTab = 'Upcoming';
+    this.activeRideTab = 'My Published Rides';
     this.search.from = 'Bengaluru Central';
     this.search.to = 'Mysuru Palace Road';
     this.resultRides = this.buildNearbyRideResults();
@@ -2562,6 +3148,60 @@ export class HomePage {
 
   closeBookingRequestPopup() {
     this.selectedBookingRequest = null;
+  }
+
+  approveBookingRequest() {
+    if (!this.selectedBookingRequest?.bookingId) return;
+    this.api.updateBooking(this.selectedBookingRequest.bookingId, { status: 'confirmed' }).subscribe({
+      next: () => {
+        this.presentToast('Booking confirmed');
+        this.loadOwnerBookingRequests();
+        this.loadPublishedRides();
+        this.closeBookingRequestPopup();
+      },
+      error: (error) => this.presentToast(error?.error?.error || 'Unable to confirm booking'),
+    });
+  }
+
+  rejectBookingRequest() {
+    if (!this.selectedBookingRequest?.bookingId) return;
+    this.api.updateBooking(this.selectedBookingRequest.bookingId, { status: 'rejected' }).subscribe({
+      next: () => {
+        this.presentToast('Booking rejected');
+        this.loadOwnerBookingRequests();
+        this.closeBookingRequestPopup();
+      },
+      error: (error) => this.presentToast(error?.error?.error || 'Unable to reject booking'),
+    });
+  }
+
+  contactBookingPassenger(mode: 'phone' | 'email' | 'chat') {
+    if (!this.selectedBookingRequest) return;
+    if (mode === 'phone' && this.selectedBookingRequest.passengerPhone) {
+      window.location.href = `tel:${this.selectedBookingRequest.passengerPhone.replace(/\s+/g, '')}`;
+      return;
+    }
+    if (mode === 'email' && this.selectedBookingRequest.passengerEmail) {
+      window.location.href = `mailto:${this.selectedBookingRequest.passengerEmail}`;
+      return;
+    }
+    if (mode === 'chat' && this.selectedBookingRequest.rideId && this.selectedBookingRequest.passengerId) {
+      this.selectedRide = {
+        ...this.selectedRide,
+        id: this.selectedBookingRequest.rideId,
+        driverId: this.selectedBookingRequest.passengerId,
+        driver: this.selectedBookingRequest.passengerName,
+        owner: this.selectedBookingRequest.passengerName,
+        photo: this.selectedBookingRequest.passengerPhoto || this.avatarForName(this.selectedBookingRequest.passengerName),
+        route: this.selectedBookingRequest.route,
+        pickup: this.selectedBookingRequest.pickup,
+        drop: this.selectedBookingRequest.drop,
+      };
+      this.goTo('/chat');
+      this.loadChatHistory();
+      return;
+    }
+    this.presentToast('Contact detail unavailable');
   }
 
   openOwnerProfile() {
@@ -2610,10 +3250,55 @@ export class HomePage {
     this.presentToast('Stop added');
   }
 
+  startPublishRideFlow() {
+    if (!this.vehicles.length) {
+      this.presentToast('Add your vehicle first before publishing a ride');
+      this.goTo('/vehicles');
+      return;
+    }
+    if (!this.hasVerifiedPublishVehicle) {
+      this.presentToast('Only verified vehicles can be used to publish rides. Verification usually takes 10 to 15 minutes.');
+      this.goTo('/vehicles');
+      return;
+    }
+    this.ensurePublishVehicleSelection();
+    this.goTo('/publish');
+  }
+
+  selectPublishVehicle(vehicle: ProfileVehicle) {
+    if (!this.isVehicleVerified(vehicle) || !vehicle.vehicleId) {
+      this.presentToast('This vehicle is still under verification');
+      return;
+    }
+    this.publishRideForm.vehicleId = Number(vehicle.vehicleId);
+  }
+
+  useCurrentLocationForPublish() {
+    if (!navigator.geolocation) {
+      this.presentToast('Current location is not supported on this device');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        this.publishRideForm.departureLat = Number(position.coords.latitude);
+        this.publishRideForm.departureLng = Number(position.coords.longitude);
+        this.publishRideForm.departure = 'Current location';
+        this.presentToast('Current location added as source');
+      },
+      () => this.presentToast('Unable to fetch current location'),
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  }
+
   continuePublish() {
     if (!this.canPublishRide) {
       this.presentToast('Complete owner profile and vehicle verification before publishing');
       this.goTo(this.hasVerifiedPublishVehicle ? '/profile' : '/vehicles');
+      return;
+    }
+
+    if (!this.canContinuePublishDetails) {
+      this.presentToast('Select a verified vehicle, source, destination, and allowed passengers');
       return;
     }
 
@@ -2642,11 +3327,11 @@ export class HomePage {
   }
 
   increaseSeats() {
-    this.rideSetup.seats = Math.min(8, this.rideSetup.seats + 1);
+    this.publishRideForm.allowedPassengers = Math.min(8, this.publishRideForm.allowedPassengers + 1);
   }
 
   decreaseSeats() {
-    this.rideSetup.seats = Math.max(1, this.rideSetup.seats - 1);
+    this.publishRideForm.allowedPassengers = Math.max(1, this.publishRideForm.allowedPassengers - 1);
   }
 
   selectMusic(option: string) {
@@ -2658,7 +3343,7 @@ export class HomePage {
   }
 
   publishRideNow() {
-    const verifiedVehicle = this.vehicles.find((vehicle) => vehicle.vehicleId && this.isVehicleVerified(vehicle));
+    const verifiedVehicle = this.selectedPublishVehicle;
     if (!this.canPublishRide || !verifiedVehicle?.vehicleId) {
       this.presentToast('Verification must be complete before your ride can go public');
       this.goTo(this.hasVerifiedPublishVehicle ? '/profile' : '/vehicles');
@@ -2670,15 +3355,42 @@ export class HomePage {
         vehicleId: verifiedVehicle.vehicleId,
         origin: this.publishRideForm.departure,
         destination: this.publishRideForm.destination,
+        originLat: this.publishRideForm.departureLat,
+        originLng: this.publishRideForm.departureLng,
+        destinationLat: this.publishRideForm.destinationLat,
+        destinationLng: this.publishRideForm.destinationLng,
         departureAt: new Date(Date.now() + 86400000).toISOString(),
         pricePerSeat: this.rideSetup.pricePerSeat,
-        totalSeats: this.rideSetup.seats,
-        instantBooking: this.rideSetup.instantBooking,
+        totalSeats: this.publishRideForm.allowedPassengers,
+        instantBooking: false,
         stops: this.stops,
+        backpackAllowed: this.publishRideForm.backpackAllowed,
+        bigTrolleyAllowed: this.publishRideForm.bigTrolleyAllowed,
       })
       .subscribe({
-        next: () => {
+        next: (response: any) => {
+          const ride = response.ride || {};
+          this.managedRides = [
+            {
+              id: ride.ride_id,
+              tab: 'My Published Rides',
+              driver: this.profile.fullName,
+              image: this.currentUserAvatar,
+              route: `${ride.origin || this.publishRideForm.departure} to ${ride.destination || this.publishRideForm.destination}`,
+              date: 'Tomorrow',
+              time: new Date(ride.departure_at || Date.now() + 86400000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              price: `INR ${Number(ride.price_per_seat || this.rideSetup.pricePerSeat)}`,
+              status: 'Published',
+              vehicle: `${verifiedVehicle.make} ${verifiedVehicle.model}`,
+              seatsAvailable: Number(ride.seats_available ?? this.publishRideForm.allowedPassengers),
+              totalSeats: Number(ride.total_seats ?? this.publishRideForm.allowedPassengers),
+              bookingRequests: [],
+            },
+            ...this.managedRides.filter((item) => item.tab !== 'My Published Rides'),
+          ];
+          this.activeRideTab = 'My Published Rides';
           this.showPublishSuccess = true;
+          this.loadPublishedRides();
         },
         error: () => {
           this.showPublishSuccess = true;
@@ -2691,9 +3403,8 @@ export class HomePage {
   }
 
   selectTab(tab: 'search' | 'publish' | 'yourRides' | 'inbox' | 'profile') {
-    if (tab === 'publish' && !this.canPublishRide) {
-      this.presentToast('Only verified owners with a verified vehicle can publish rides');
-      this.goTo(this.hasVerifiedPublishVehicle ? '/profile' : '/vehicles');
+    if (tab === 'publish') {
+      this.startPublishRideFlow();
       return;
     }
 
@@ -3997,10 +4708,10 @@ export class HomePage {
                 route: `${this.search.from} to ${this.search.to}`,
                 price: `INR ${ride.price_per_seat || templateRide.priceValue}`,
                 priceValue: Number(ride.price_per_seat || templateRide.priceValue),
-                seats: index === 0 ? 0 : availableSeats,
+                seats: availableSeats,
                 totalSeats,
-                bookedSeats: index === 0 ? totalSeats : Math.max(0, totalSeats - availableSeats),
-                status: (index === 0 || availableSeats < 1 ? 'Full booked' : 'Available') as RideSearchResult['status'],
+                bookedSeats: Math.max(0, totalSeats - availableSeats),
+                status: (availableSeats < 1 ? 'Full booked' : 'Available') as RideSearchResult['status'],
                 instant: Boolean(ride.instant_booking ?? templateRide.instant),
                 pickup: templateRide.pickup,
                 drop: templateRide.drop,

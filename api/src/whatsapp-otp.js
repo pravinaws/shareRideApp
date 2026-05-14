@@ -227,6 +227,15 @@ export async function verifyWhatsAppOtp(phone, otp) {
     return { ok: false, status: 'invalid', message: 'Enter a valid 10 digit mobile number and OTP' };
   }
 
+  if (config.bypass && config.bypassCode && code === config.bypassCode) {
+    otpSessions.delete(normalizedPhone);
+    return {
+      ok: true,
+      status: 'approved',
+      mode: 'bypass',
+    };
+  }
+
   if (!config.bypass && !config.mock && config.mode === 'verify' && config.accountSid && config.authToken && config.serviceSid) {
     return verifyWithTwilioVerify(config, normalizedPhone, code);
   }
