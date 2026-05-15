@@ -52,7 +52,7 @@ function razorpayAuthHeader() {
   return `Basic ${Buffer.from(`${razorpayKeyId}:${razorpayKeySecret}`).toString('base64')}`;
 }
 
-async function createRazorpayOrder({ paymentId, amount, user }) {
+async function createRazorpayOrder({ paymentId, amount, user, transactionId, userReference }) {
   const response = await fetch('https://api.razorpay.com/v1/orders', {
     method: 'POST',
     headers: {
@@ -62,10 +62,12 @@ async function createRazorpayOrder({ paymentId, amount, user }) {
     body: JSON.stringify({
       amount: Math.round(Number(amount || 0) * 100),
       currency: 'INR',
-      receipt: `wallet_${paymentId}_${Date.now()}`.slice(0, 40),
+      receipt: `txn_${transactionId}`.slice(0, 40),
       notes: {
-        user_id: String(user?.user_id || ''),
-        payment_id: String(paymentId),
+        user_id: String(userReference),
+        payment_id: String(transactionId),
+        transaction_id: String(transactionId),
+        internal_payment_id: String(paymentId),
         email: String(user?.email || ''),
         phone: String(user?.phone || ''),
       },
@@ -112,6 +114,18 @@ function normalizePaymentStatus(value) {
   return 'pending';
 }
 
+function buildPaymentTransactionId(seedValue = Date.now()) {
+  const digits = String(seedValue || Date.now()).replace(/\D/g, '') || String(Date.now());
+  return digits.slice(-10).padStart(10, '0');
+}
+
+function buildPaymentUserReference(userId) {
+  return String(userId || '')
+    .replace(/\D/g, '')
+    .slice(-6)
+    .padStart(6, '0');
+}
+
 function appBaseUrlForRequest(req) {
   const hostHeader = String(req.get('host') || '').trim();
   const hostname = hostHeader.split(':')[0];
@@ -134,7 +148,6 @@ function buildPaymentsRedirect(req, status, paymentId, extra = {}) {
 
 async function reconcilePaymentWithRazorpay(payment, { razorpayPaymentId, razorpayOrderId, razorpaySignature, fallbackStatus } = {}) {
   if (!payment) return { ok: false, error: 'Payment not found' };
-  const wasPaid = payment.status === 'paid';
 
   const paymentId = String(razorpayPaymentId || payment.razorpay_payment_id || '').trim();
   const orderId = String(razorpayOrderId || payment.razorpay_order_id || '').trim();
@@ -169,8 +182,9 @@ async function reconcilePaymentWithRazorpay(payment, { razorpayPaymentId, razorp
   payment.updated_at = new Date().toISOString();
 
   const user = store.users.find((item) => item.user_id === payment.payer_id);
-  if (gatewayStatus === 'paid' && !wasPaid && user) {
+  if (gatewayStatus === 'paid' && !payment.wallet_credited_at && user) {
     user.wallet_balance = Number(user.wallet_balance || 0) + Number(payment.amount || 0);
+    payment.wallet_credited_at = new Date().toISOString();
     notifyUserMobile(payment.payer_id, 'Payment successful', `Payment of INR ${payment.amount} was completed.`);
   }
 
@@ -371,6 +385,56 @@ app.post('/api/auth/login', async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+app.post('/api/admin/login', (req, res) => {
+  const username = String(req.body?.username || '').trim();
+  const password = String(req.body?.password || '');
+  const expectedUsername = process.env.ADMIN_USERNAME || 'pravinbambale';
+  const expectedPassword = process.env.ADMIN_PASSWORD || 'Buds@1997';
+
+  if (!username || !password) {
+    return res.status(422).json({ error: 'Username and password are required' });
+  }
+
+  if (username !== expectedUsername || password !== expectedPassword) {
+    return res.status(401).json({ error: 'Invalid admin username or password' });
+  }
+
+  let adminUser = store.users.find((user) => user.role === 'admin');
+  if (!adminUser) {
+    adminUser = {
+      user_id: nextId(store.users, 'user_id'),
+      full_name: 'Pravin Bambale',
+      email: `${expectedUsername}@admin.local`,
+      phone: '+910000000000',
+      age: null,
+      bio: 'Platform administrator',
+      rating: 0,
+      role: 'admin',
+      verification_status: 'verified',
+      passenger_verification_status: 'verified',
+      gov_id_number: '',
+      gov_id_front_url: '',
+      gov_id_back_url: '',
+      wallet_balance: 0,
+      warning_count: 0,
+      status: 'active',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    store.users.push(adminUser);
+  } else {
+    adminUser.full_name = adminUser.full_name || 'Pravin Bambale';
+    adminUser.email = adminUser.email || `${expectedUsername}@admin.local`;
+    adminUser.role = 'admin';
+    adminUser.verification_status = 'verified';
+    adminUser.passenger_verification_status = 'verified';
+    adminUser.updated_at = new Date().toISOString();
+  }
+
+  persistStore();
+  return res.json({ ok: true, token: createToken(adminUser), user: adminUser });
 });
 
 app.get('/api/realtime', requireAuth, (req, res) => {
@@ -916,6 +980,21 @@ app.patch('/api/admin/users/:userId', requireAuth, requireRole('admin'), (req, r
     publishRealtime(user.user_id, 'notification.created', notification);
     notifyUserMobile(user.user_id, notification.title, notification.message);
   }
+  addAdminActivity(req, {
+    activityType: user.role === 'passenger' ? 'Passenger' : 'Owner',
+    action: 'User account updated',
+    targetType: 'user',
+    targetId: user.user_id,
+    oldValues: previous,
+    newValues: {
+      status: user.status,
+      verification_status: user.verification_status,
+      passenger_verification_status: user.passenger_verification_status,
+      wallet_balance: user.wallet_balance,
+      warning_count: user.warning_count,
+    },
+  });
+  persistStore();
   res.json({ ok: true, user, notification });
 });
 
@@ -934,6 +1013,14 @@ app.post('/api/admin/users/:userId/warnings', requireAuth, requireRole('admin'),
   });
   publishRealtime(user.user_id, 'notification.created', notification);
   notifyUserMobile(user.user_id, notification.title, notification.message);
+  addAdminActivity(req, {
+    activityType: 'Security',
+    action: user.warning_count >= 2 ? 'Second warning issued' : 'Warning issued',
+    targetType: 'user',
+    targetId: user.user_id,
+    newValues: { warning_count: user.warning_count, status: user.status, message: notification.message },
+  });
+  persistStore();
   res.json({ ok: true, user, notification });
 });
 
@@ -955,6 +1042,14 @@ app.patch('/api/admin/vehicles/:vehicleId/verification', requireAuth, requireRol
   });
   publishRealtime(vehicle.owner_id, 'vehicle.verification.updated', { vehicle, notification });
   notifyUserMobile(vehicle.owner_id, notification.title, notification.message);
+  addAdminActivity(req, {
+    activityType: 'Owner',
+    action: `Vehicle ${vehicle.status}`,
+    targetType: 'vehicle',
+    targetId: vehicle.vehicle_id,
+    newValues: { status: vehicle.status, owner_id: vehicle.owner_id, plate_number: vehicle.plate_number },
+  });
+  persistStore();
   res.json({ ok: true, vehicle, notification });
 });
 
@@ -1123,8 +1218,12 @@ app.post('/api/payments', requireAuth, async (req, res) => {
     return res.status(422).json({ error: 'Enter a valid amount' });
   }
   const user = store.users.find((item) => item.user_id === req.user.sub);
+  const transactionId = buildPaymentTransactionId(Date.now());
+  const userReference = buildPaymentUserReference(req.user.sub);
   const payment = {
     payment_id: nextId(store.payments, 'payment_id'),
+    transaction_id: transactionId,
+    user_reference: userReference,
     booking_id: asNumber(req.body.bookingId),
     payer_id: req.user.sub,
     amount,
@@ -1134,13 +1233,20 @@ app.post('/api/payments', requireAuth, async (req, res) => {
     razorpay_signature: null,
     razorpay_payment_id: null,
     refund_status: 'none',
+    wallet_credited_at: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 
   if (payment.provider === 'razorpay' && isRazorpayConfigured()) {
     try {
-      const order = await createRazorpayOrder({ paymentId: payment.payment_id, amount, user });
+      const order = await createRazorpayOrder({
+        paymentId: payment.payment_id,
+        amount,
+        user,
+        transactionId: payment.transaction_id,
+        userReference: payment.user_reference,
+      });
       payment.razorpay_order_id = order.id;
       payment.status = normalizePaymentStatus(order.status);
     } catch (error) {
@@ -1151,6 +1257,7 @@ app.post('/api/payments', requireAuth, async (req, res) => {
   store.payments.unshift(payment);
   if (payment.status === 'paid') {
     if (user) user.wallet_balance = Number(user.wallet_balance || 0) + amount;
+    payment.wallet_credited_at = new Date().toISOString();
     notifyUserMobile(req.user.sub, 'Payment successful', `Payment of INR ${payment.amount} was completed.`);
   }
   persistStore();
@@ -1239,21 +1346,34 @@ app.all('/api/payments/razorpay/callback', async (req, res) => {
     return res.redirect(buildPaymentsRedirect(req, 'failed', '', { reason: 'payment_not_found' }));
   }
 
-  payment.status = 'pending';
+  if (payment.status !== 'paid') {
+    payment.status = 'pending';
+  }
   payment.razorpay_payment_id = razorpayPaymentId || payment.razorpay_payment_id;
   payment.razorpay_signature = razorpaySignature || payment.razorpay_signature;
   payment.updated_at = new Date().toISOString();
   persistStore();
 
   if (razorpayPaymentId) {
-    reconcilePaymentWithRazorpay(payment, {
-      razorpayPaymentId,
-      razorpayOrderId,
-      razorpaySignature,
-      fallbackStatus: gatewayStatus,
-    }).catch((error) => {
+    try {
+      const result = await reconcilePaymentWithRazorpay(payment, {
+        razorpayPaymentId,
+        razorpayOrderId,
+        razorpaySignature,
+        fallbackStatus: gatewayStatus,
+      });
+      return res.redirect(buildPaymentsRedirect(req, result.payment?.status || gatewayStatus || 'pending', payment.payment_id));
+    } catch (error) {
       console.error(`Razorpay callback reconciliation failed for payment ${payment.payment_id}: ${error.message}`);
-    });
+      return res.redirect(buildPaymentsRedirect(req, 'failed', payment.payment_id, { reason: 'reconcile_failed' }));
+    }
+  }
+
+  if (gatewayStatus === 'failed' || gatewayStatus === 'cancelled') {
+    payment.status = gatewayStatus;
+    payment.updated_at = new Date().toISOString();
+    persistStore();
+    return res.redirect(buildPaymentsRedirect(req, gatewayStatus, payment.payment_id));
   }
 
   return res.redirect(buildPaymentsRedirect(req, 'pending', payment.payment_id));

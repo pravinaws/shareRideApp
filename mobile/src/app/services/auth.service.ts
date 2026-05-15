@@ -74,6 +74,15 @@ export class AuthService {
     });
   }
 
+  adminLogin(username: string, password: string) {
+    return this.post<{ token: string; user: SessionUser }>('/admin/login', { username, password }).pipe(
+      tap((session) => {
+        localStorage.setItem(this.tokenKey, session.token);
+        localStorage.setItem(this.userKey, JSON.stringify(session.user));
+      }),
+    );
+  }
+
   login(phone: string, otp: string, role = 'driver', fullName?: string, email?: string, authMode: 'login' | 'signup' = 'login', referralCode?: string) {
     return this.post<{ token: string; user: SessionUser }>('/auth/login', { phone, otp, role, fullName, email, authMode, referralCode }).pipe(
       tap((session) => {

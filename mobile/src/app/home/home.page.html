@@ -3,13 +3,13 @@
     <ion-refresher-content pullingText="Pull to refresh" refreshingText="Refreshing..."></ion-refresher-content>
   </ion-refresher>
   <div class="intro-splash" *ngIf="showIntroSplash" aria-label="shareMILES loading">
-    <img src="assets/app-logo.png" alt="shareMILES" />
+    <img src="assets/ride-share-logo.svg" alt="RideShare" />
   </div>
   <div class="loading-overlay" *ngIf="appLoading || profileLoading || vehicleSaving || chatLoading || walletProcessing" aria-label="Loading">
     <span class="loading-icon"></span>
   </div>
 
-  <main class="app-shell">
+  <main>
     <ng-container [ngSwitch]="currentRoute">
       <section *ngSwitchCase="'/login'" class="screen-stack login-screen">
         <article
@@ -29,11 +29,11 @@
               <ion-icon name="arrow-back-outline"></ion-icon>
             </button>
             <span class="auth-back-spacer" *ngIf="authMode === 'login' && !otpSent"></span>
-            <strong>RideShare</strong>
+            <strong></strong>
           </div>
 
-          <div class="auth-brand-visual" aria-hidden="true">
-            <img class="auth-logo-image" src="assets/app-logo.png" alt="" />
+          <div class="auth-brand-mark">
+            <img src="assets/ride-share-logo.svg" alt="RideShare" />
           </div>
 
           <div class="section-title auth-title" *ngIf="!otpSent">
@@ -70,7 +70,6 @@
           </label>
           <label class="form-row input-row phone-row" *ngIf="!otpSent">
             <small class="floating-label">Mobile number</small>
-            <strong class="country-code">+91</strong>
             <input
               [ngModel]="loginForm.phone"
               (ngModelChange)="onLoginPhoneInput($event)"
@@ -87,7 +86,6 @@
           </button>
           <div class="otp-entry-section" *ngIf="otpSent">
             <div class="section-title auth-title">
-              <h1>OTP Verification</h1>
               <p>
                 Enter the OTP sent to <strong>{{ authPhoneDisplay }}</strong>
               </p>
@@ -126,6 +124,56 @@
           </p>
         </article>
 
+      </section>
+
+      <section *ngSwitchCase="'/admin/login'" class="screen-stack login-screen">
+        <article class="minimal-card auth-card login-auth-card">
+          <div class="auth-topbar">
+            <button
+              class="auth-back-button"
+              type="button"
+              aria-label="Back"
+              (click)="goTo('/login')"
+            >
+              <ion-icon name="arrow-back-outline"></ion-icon>
+            </button>
+            <strong>RideShare Admin</strong>
+            <span class="auth-back-spacer"></span>
+          </div>
+
+          <div class="auth-brand-mark compact">
+            <img src="assets/ride-share-logo.svg" alt="RideShare" />
+          </div>
+
+          <div class="section-title auth-title">
+            <h1>Admin Login</h1>
+            <p>Enter your admin username and password.</p>
+          </div>
+
+          <label class="form-row input-row auth-inline-row">
+            <span>
+              <small>Username</small>
+              <input [(ngModel)]="adminLoginForm.username" aria-label="Admin username" autocomplete="username" />
+            </span>
+            <ion-icon name="person-circle-outline"></ion-icon>
+          </label>
+
+          <label class="form-row input-row auth-inline-row">
+            <span>
+              <small>Password</small>
+              <input [(ngModel)]="adminLoginForm.password" type="password" aria-label="Admin password" autocomplete="current-password" />
+            </span>
+            <ion-icon name="lock-closed-outline"></ion-icon>
+          </label>
+
+          <button class="primary-button auth-submit-button" type="button" (click)="adminLogin()" [disabled]="adminLoginSubmitting">
+            {{ adminLoginSubmitting ? 'Signing in...' : 'Login to Admin' }}
+          </button>
+          <p class="auth-switch-row">
+            User login?
+            <button class="link-button" type="button" (click)="goTo('/login')">Back to Login</button>
+          </p>
+        </article>
       </section>
 
       <section *ngSwitchCase="'/search'" class="screen-stack search-screen">
@@ -1539,12 +1587,14 @@
             </span>
             <ion-icon name="wallet-outline"></ion-icon>
           </label>
-          <button class="primary-button" type="button" (click)="topUpWallet()" [disabled]="walletProcessing">
-            {{ walletProcessing ? 'Opening Razorpay...' : 'Add Money with Razorpay' }}
-          </button>
-          <button class="secondary-button withdraw-trigger-button" type="button" (click)="openWithdrawDialog()" [disabled]="walletProcessing">
-            Withdraw Balance
-          </button>
+          <div class="wallet-action-row">
+            <button class="primary-button" type="button" (click)="topUpWallet()" [disabled]="walletProcessing">
+              {{ walletProcessing ? 'Opening Razorpay...' : 'Add Money with Razorpay' }}
+            </button>
+            <button class="secondary-button withdraw-trigger-button" type="button" (click)="openWithdrawDialog()" [disabled]="walletProcessing">
+              Withdraw Balance
+            </button>
+          </div>
         </article>
         <article class="minimal-card">
           <div class="section-title compact"><h2>Transaction history</h2></div>
@@ -1865,103 +1915,155 @@
     </button>
     <div>
       <strong>Publish ride</strong>
-      <span>Step {{ publishFlowStepFromRoute }} of 4</span>
+      <span>Step {{ publishFlowUiStep }} of 3</span>
     </div>
     <button class="icon-button" type="button" aria-label="Options">
       <ion-icon name="options-outline"></ion-icon>
     </button>
   </header>
 
-  <section class="progress-card">
+  <section class="progress-card publish-progress-card">
     <div class="progress-label">
-      <span>{{ publishFlowStepFromRoute === 2 ? 'Ride details' : publishFlowStepFromRoute === 3 ? 'Travel preferences' : 'Confirm ride' }}</span>
-      <strong>{{ publishFlowStepFromRoute }}/4</strong>
+      <span>{{ publishFlowTitle }}</span>
+      <strong>{{ publishFlowUiStep }}/3</strong>
     </div>
     <div class="progress-track">
-      <span [style.width.%]="publishFlowStepFromRoute * 25"></span>
+      <span [style.width.%]="publishProgressPercent"></span>
     </div>
+    <p>{{ publishFlowHint }}</p>
   </section>
 
-  <section class="route-card">
-    <small>Route</small>
-    <strong>{{ publishRideForm.departure }} to {{ publishRideForm.destination }}</strong>
-    <span>Today Â· 08:30 AM Â· via {{ stops[0] }}</span>
+  <section class="route-card publish-route-card">
+    <div class="route-card-copy">
+      <small>Trip preview</small>
+      <strong>{{ publishRideForm.departure || 'Choose your source' }} to {{ publishRideForm.destination || 'Choose your destination' }}</strong>
+      <span>{{ selectedPublishVehicle ? selectedPublishVehicle.make + ' ' + selectedPublishVehicle.model : 'Verified vehicle required' }} · {{ publishRideForm.allowedPassengers }} seats</span>
+    </div>
+    <div class="route-card-badges">
+      <b>{{ selectedPublishVehicle ? 'Ready' : 'Vehicle needed' }}</b>
+      <span *ngIf="publishRideForm.backpackAllowed || publishRideForm.bigTrolleyAllowed">{{ publishRideForm.backpackAllowed ? 'Backpack' : 'No backpack' }} · {{ publishRideForm.bigTrolleyAllowed ? 'Trolley' : 'No trolley' }}</span>
+    </div>
   </section>
 </ng-template>
 
 <ng-template #publishStepTwo>
   <ng-container *ngTemplateOutlet="publishHeader"></ng-container>
-  <article class="minimal-card">
+  <article class="minimal-card publish-card">
     <div class="section-title">
-      <h1>Ride publishing form</h1>
-      <p>Select your verified vehicle and add route details to publish the ride.</p>
+      <h1>Let&apos;s set up your ride</h1>
+      <p>Pick one verified vehicle and fill only the details passengers need to see.</p>
     </div>
-    <div class="publish-vehicle-grid">
-      <button
-        type="button"
-        class="publish-vehicle-option"
-        *ngFor="let vehicle of vehicles"
-        [class.active]="selectedPublishVehicle?.vehicleId === vehicle.vehicleId"
-        [class.disabled-option]="!isVehicleVerified(vehicle)"
-        (click)="selectPublishVehicle(vehicle)"
-      >
-        <strong>{{ vehicle.make }} {{ vehicle.model }}</strong>
-        <span>{{ vehicle.color }} · {{ vehicle.plateNumber }}</span>
-        <small>{{ isVehicleVerified(vehicle) ? 'Verified vehicle' : 'Verification pending · around 10 to 15 minutes' }}</small>
-      </button>
-    </div>
-    <label class="form-row input-row">
-      <span>
-        <small>Source location</small>
-        <input [(ngModel)]="publishRideForm.departure" aria-label="Source location" />
-      </span>
-      <button type="button" class="secondary-mini" (click)="useCurrentLocationForPublish()">Current</button>
-    </label>
-    <label class="form-row input-row">
-      <span>
-        <small>Destination location</small>
-        <input [(ngModel)]="publishRideForm.destination" aria-label="Destination location" />
-      </span>
-      <ion-icon name="location-outline"></ion-icon>
-    </label>
-    <div class="form-row seat-row">
-      <div>
-        <small>Allowed passengers</small>
-        <strong>{{ publishRideForm.allowedPassengers }}</strong>
+    <section class="publish-block">
+      <div class="publish-block-head">
+        <div>
+          <small>Step 1</small>
+          <strong>Select a verified vehicle</strong>
+        </div>
+        <span>{{ verifiedPublishVehicles.length }} ready</span>
       </div>
-      <div class="stepper">
-        <button type="button" (click)="decreaseSeats()" aria-label="Decrease passengers"><ion-icon name="remove-outline"></ion-icon></button>
-        <button type="button" (click)="increaseSeats()" aria-label="Increase passengers"><ion-icon name="add-outline"></ion-icon></button>
+      <div class="publish-vehicle-grid">
+        <button
+          type="button"
+          class="publish-vehicle-option"
+          *ngFor="let vehicle of verifiedPublishVehicles"
+          [class.active]="selectedPublishVehicle?.vehicleId === vehicle.vehicleId"
+          (click)="selectPublishVehicle(vehicle)"
+        >
+          <div class="publish-vehicle-meta">
+            <strong>{{ vehicle.make }} {{ vehicle.model }}</strong>
+            <span>{{ vehicle.color }} · {{ vehicle.plateNumber }}</span>
+          </div>
+          <small>Verified vehicle</small>
+        </button>
       </div>
-    </div>
-    <div class="toggle-row">
-      <div><strong>Backpack allowed</strong><span>Passengers can carry a small backpack.</span></div>
-      <ion-toggle [(ngModel)]="publishRideForm.backpackAllowed" aria-label="Backpack allowed"></ion-toggle>
-    </div>
-    <div class="toggle-row">
-      <div><strong>Big trolley allowed</strong><span>Allow larger trolley luggage for this ride.</span></div>
-      <ion-toggle [(ngModel)]="publishRideForm.bigTrolleyAllowed" aria-label="Big trolley allowed"></ion-toggle>
-    </div>
+      <div class="publish-info-banner" *ngIf="hasPendingPublishVehicles">
+        <ion-icon name="time-outline"></ion-icon>
+        <span>Vehicles under verification will appear here after approval. Verification usually takes 10 to 15 minutes.</span>
+      </div>
+    </section>
+
+    <section class="publish-block">
+      <div class="publish-block-head">
+        <div>
+          <small>Step 2</small>
+          <strong>Route details</strong>
+        </div>
+      </div>
+      <label class="form-row input-row publish-input-row">
+        <span>
+          <small>Source location</small>
+          <input [(ngModel)]="publishRideForm.departure" aria-label="Source location" placeholder="Enter pickup point" />
+        </span>
+        <button type="button" class="secondary-mini" (click)="useCurrentLocationForPublish()">Current</button>
+      </label>
+      <label class="form-row input-row publish-input-row">
+        <span>
+          <small>Destination location</small>
+          <input [(ngModel)]="publishRideForm.destination" aria-label="Destination location" placeholder="Enter drop location" />
+        </span>
+        <ion-icon name="location-outline"></ion-icon>
+      </label>
+    </section>
+
+    <section class="publish-block">
+      <div class="publish-block-head">
+        <div>
+          <small>Step 3</small>
+          <strong>Seats and luggage</strong>
+        </div>
+      </div>
+      <div class="form-row seat-row publish-seat-row">
+        <div>
+          <small>Allowed passengers</small>
+          <strong>{{ publishRideForm.allowedPassengers }}</strong>
+          <span>Choose how many passengers can book this ride.</span>
+        </div>
+        <div class="stepper">
+          <button type="button" (click)="decreaseSeats()" aria-label="Decrease passengers"><ion-icon name="remove-outline"></ion-icon></button>
+          <button type="button" (click)="increaseSeats()" aria-label="Increase passengers"><ion-icon name="add-outline"></ion-icon></button>
+        </div>
+      </div>
+      <div class="publish-toggle-group">
+        <div class="toggle-row">
+          <div><strong>Backpack allowed</strong><span>Passengers can carry a small backpack.</span></div>
+          <ion-toggle [(ngModel)]="publishRideForm.backpackAllowed" aria-label="Backpack allowed"></ion-toggle>
+        </div>
+        <div class="toggle-row">
+          <div><strong>Big trolley allowed</strong><span>Allow larger trolley luggage for this ride.</span></div>
+          <ion-toggle [(ngModel)]="publishRideForm.bigTrolleyAllowed" aria-label="Big trolley allowed"></ion-toggle>
+        </div>
+      </div>
+    </section>
   </article>
 </ng-template>
 
 <ng-template #publishStepThree>
   <ng-container *ngTemplateOutlet="publishHeader"></ng-container>
-  <article class="minimal-card">
+  <article class="minimal-card publish-card">
     <div class="section-title">
-      <h1>Travel preferences</h1>
-      <p>Help passengers know your ride style.</p>
+      <h1>Set your ride style</h1>
+      <p>These details help passengers decide quickly if your ride suits them.</p>
     </div>
-    <div class="toggle-row">
-      <div><strong>Smoking allowed</strong><span>Allow smoking during stops or ride.</span></div>
-      <ion-toggle [(ngModel)]="travelPreferences.smokingAllowed" aria-label="Smoking allowed"></ion-toggle>
-    </div>
-    <div class="toggle-row">
-      <div><strong>Pets allowed</strong><span>Accept passengers travelling with pets.</span></div>
-      <ion-toggle [(ngModel)]="travelPreferences.petsAllowed" aria-label="Pets allowed"></ion-toggle>
-    </div>
+    <section class="publish-block">
+      <div class="publish-block-head">
+        <div>
+          <small>Comfort preferences</small>
+          <strong>Travel rules</strong>
+        </div>
+      </div>
+      <div class="publish-toggle-group">
+        <div class="toggle-row">
+          <div><strong>Smoking allowed</strong><span>Allow smoking during stops or ride.</span></div>
+          <ion-toggle [(ngModel)]="travelPreferences.smokingAllowed" aria-label="Smoking allowed"></ion-toggle>
+        </div>
+        <div class="toggle-row">
+          <div><strong>Pets allowed</strong><span>Accept passengers travelling with pets.</span></div>
+          <ion-toggle [(ngModel)]="travelPreferences.petsAllowed" aria-label="Pets allowed"></ion-toggle>
+        </div>
+      </div>
+    </section>
   </article>
-  <article class="minimal-card">
+  <article class="minimal-card publish-card">
     <div class="section-title compact"><h2>Music preference</h2></div>
     <div class="chip-group">
       <button type="button" *ngFor="let option of musicOptions" [class.active]="travelPreferences.music === option" (click)="selectMusic(option)">
@@ -1969,7 +2071,7 @@
       </button>
     </div>
   </article>
-  <article class="minimal-card">
+  <article class="minimal-card publish-card">
     <div class="section-title compact"><h2>Chat preference</h2></div>
     <div class="chip-group">
       <button type="button" *ngFor="let option of chatOptions" [class.active]="travelPreferences.chat === option" (click)="selectChat(option)">
@@ -1981,17 +2083,22 @@
 
 <ng-template #publishStepFour>
   <ng-container *ngTemplateOutlet="publishHeader"></ng-container>
-  <article class="minimal-card confirmation-card">
+  <article class="minimal-card confirmation-card publish-card publish-confirm-card">
     <div class="section-title">
-      <h1>Ride confirmation</h1>
-      <p>Review before publishing.</p>
+      <h1>Review before you go live</h1>
+      <p>Passengers will see this summary when they search for matching rides.</p>
     </div>
-    <div class="summary-row"><span>Route</span><strong>{{ publishRideForm.departure }} to {{ publishRideForm.destination }}</strong></div>
-    <div class="summary-row"><span>Time</span><strong>Today Â· 08:30 AM</strong></div>
+    <div class="publish-summary-hero">
+      <strong>{{ publishRideForm.departure || 'Source location' }}</strong>
+      <ion-icon name="arrow-down-outline"></ion-icon>
+      <strong>{{ publishRideForm.destination || 'Destination location' }}</strong>
+      <span>{{ selectedPublishVehicle ? selectedPublishVehicle.make + ' ' + selectedPublishVehicle.model : 'Verified vehicle required' }} · {{ publishRideForm.allowedPassengers }} seats</span>
+    </div>
     <div class="summary-row"><span>Vehicle</span><strong>{{ selectedPublishVehicle ? selectedPublishVehicle.make + ' ' + selectedPublishVehicle.model + ' · ' + selectedPublishVehicle.plateNumber : 'Verified vehicle required' }}</strong></div>
-    <div class="summary-row"><span>Seats</span><strong>{{ publishRideForm.allowedPassengers }} available</strong></div>
-    <div class="summary-row"><span>Price</span><strong>INR {{ rideSetup.pricePerSeat }} per seat</strong></div>
-    <div class="summary-row"><span>Preferences</span><strong>{{ travelPreferences.music }} Â· {{ travelPreferences.chat }}</strong></div>
+    <div class="summary-row"><span>Fare</span><strong>INR {{ rideSetup.pricePerSeat }} per seat</strong></div>
+    <div class="summary-row"><span>Passengers</span><strong>{{ publishRideForm.allowedPassengers }} available</strong></div>
+    <div class="summary-row"><span>Music and chat</span><strong>{{ travelPreferences.music }} · {{ travelPreferences.chat }}</strong></div>
+    <div class="summary-row"><span>Comfort</span><strong>{{ travelPreferences.smokingAllowed ? 'Smoking allowed' : 'No smoking' }}, {{ travelPreferences.petsAllowed ? 'pets allowed' : 'no pets' }}</strong></div>
     <div class="summary-row">
       <span>Luggage rules</span>
       <strong>{{ publishRideForm.backpackAllowed ? 'Backpack allowed' : 'No backpack' }}, {{ publishRideForm.bigTrolleyAllowed ? 'big trolley allowed' : 'no big trolley' }}</strong>
@@ -1999,12 +2106,12 @@
   </article>
 </ng-template>
 
-<ion-footer class="flow-footer" *ngIf="activeNav === 'publish' && currentRoute !== '/login'">
+<ion-footer class="flow-footer" *ngIf="activeNav === 'publish' && currentRoute !== '/login' && currentRoute !== '/admin/login'">
   <button type="button" *ngIf="publishFlowStepFromRoute < 4" (click)="continuePublish()">Continue</button>
   <button type="button" *ngIf="publishFlowStepFromRoute === 4" (click)="publishRideNow()">Publish Ride</button>
 </ion-footer>
 
-<ion-footer class="app-tabbar" *ngIf="currentRoute !== '/login'">
+<ion-footer class="app-tabbar" *ngIf="currentRoute !== '/login' && currentRoute !== '/admin/login'">
   <button type="button" [class.active]="activeNav === 'search'" (click)="selectTab('search')">
     <ion-icon name="search-outline"></ion-icon>
     <span>Search</span>
