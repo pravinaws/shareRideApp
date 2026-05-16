@@ -12,6 +12,29 @@ import { addNotification, nextId, paginate, persistStore, publicUser, store } fr
 import { sendEmailNotification } from './email-notifier.js';
 import { sendWhatsAppNotification } from './whatsapp-notifier.js';
 import { normalizePhone, sendWhatsAppOtp, verifyWhatsAppOtp } from './whatsapp-otp.js';
+import {
+  appBaseUrlForRequest as resolveAppBaseUrlForRequest,
+  buildPaymentTransactionId as buildPaymentTransactionIdValue,
+  buildPaymentUserReference as buildPaymentUserReferenceValue,
+  buildPaymentsRedirect as buildPaymentsRedirectValue,
+  createRazorpayOrder as createRazorpayOrderValue,
+  fetchRazorpayPayment as fetchRazorpayPaymentValue,
+  isRazorpayConfigured as isRazorpayConfiguredValue,
+  normalizePaymentStatus as normalizePaymentStatusValue,
+  razorpayAuthHeader as razorpayAuthHeaderValue,
+  reconcilePaymentWithRazorpay as reconcilePaymentWithRazorpayValue,
+  verifyRazorpaySignature as verifyRazorpaySignatureValue,
+} from './payment-utils.js';
+import {
+  canAccessRideChat as canAccessRideChatValue,
+  haversineKm as haversineKmValue,
+  publicBooking as publicBookingValue,
+  publicMessage as publicMessageValue,
+  recalculateRideAvailability as recalculateRideAvailabilityValue,
+  rideMatchesRoute as rideMatchesRouteValue,
+  rideOwnerBookings as rideOwnerBookingsValue,
+  rideVehicle as rideVehicleValue,
+} from './ride-utils.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -19,9 +42,21 @@ const host = process.env.HOST || '0.0.0.0';
 const razorpayKeyId = String(process.env.RAZORPAY_KEY_ID || '').trim();
 const razorpayKeySecret = String(process.env.RAZORPAY_KEY_SECRET || '').trim();
 const appBaseUrl = String(process.env.APP_BASE_URL || 'http://127.0.0.1:4200').trim().replace(/\/+$/, '');
+const defaultLocalCorsOrigins = [
+  'http://localhost:8100',
+  'http://localhost:4200',
+  'http://127.0.0.1:4200',
+  'http://localhost:4201',
+  'http://127.0.0.1:4201',
+];
 const corsOrigin = !process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === '*'
   ? true
-  : process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean);
+  : Array.from(
+      new Set([
+        ...process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean),
+        ...defaultLocalCorsOrigins,
+      ]),
+    );
 
 app.use(helmet());
 app.use(cors({ origin: corsOrigin }));
@@ -45,240 +80,90 @@ function normalizeText(value) {
 }
 
 function isRazorpayConfigured() {
-  return Boolean(razorpayKeyId && razorpayKeySecret);
+  return isRazorpayConfiguredValue(razorpayKeyId, razorpayKeySecret);
 }
 
 function razorpayAuthHeader() {
-  return `Basic ${Buffer.from(`${razorpayKeyId}:${razorpayKeySecret}`).toString('base64')}`;
+  return razorpayAuthHeaderValue(razorpayKeyId, razorpayKeySecret);
 }
 
 async function createRazorpayOrder({ paymentId, amount, user, transactionId, userReference }) {
-  const response = await fetch('https://api.razorpay.com/v1/orders', {
-    method: 'POST',
-    headers: {
-      Authorization: razorpayAuthHeader(),
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      amount: Math.round(Number(amount || 0) * 100),
-      currency: 'INR',
-      receipt: `txn_${transactionId}`.slice(0, 40),
-      notes: {
-        user_id: String(userReference),
-        payment_id: String(transactionId),
-        transaction_id: String(transactionId),
-        internal_payment_id: String(paymentId),
-        email: String(user?.email || ''),
-        phone: String(user?.phone || ''),
-      },
-    }),
-  });
-
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.id) {
-    throw new Error(payload?.error?.description || payload?.error?.reason || 'Unable to create Razorpay order');
-  }
-
-  return payload;
+  return createRazorpayOrderValue({ razorpayKeyId, razorpayKeySecret }, { paymentId, amount, user, transactionId, userReference });
 }
 
 async function fetchRazorpayPayment(razorpayPaymentId) {
-  if (!isRazorpayConfigured() || !razorpayPaymentId) return null;
-  const response = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(razorpayPaymentId)}`, {
-    headers: {
-      Authorization: razorpayAuthHeader(),
-      Accept: 'application/json',
-    },
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(payload?.error?.description || payload?.error?.reason || 'Unable to fetch Razorpay payment status');
-  }
-  return payload;
+  return fetchRazorpayPaymentValue({ razorpayKeyId, razorpayKeySecret }, razorpayPaymentId);
 }
 
 function verifyRazorpaySignature(orderId, razorpayPaymentId, razorpaySignature) {
-  const expected = crypto.createHmac('sha256', razorpayKeySecret).update(`${orderId}|${razorpayPaymentId}`).digest('hex');
-  const expectedBuffer = Buffer.from(expected);
-  const signatureBuffer = Buffer.from(String(razorpaySignature || ''));
-  return expectedBuffer.length === signatureBuffer.length && crypto.timingSafeEqual(expectedBuffer, signatureBuffer);
+  return verifyRazorpaySignatureValue(razorpayKeySecret, orderId, razorpayPaymentId, razorpaySignature);
 }
 
 function normalizePaymentStatus(value) {
-  const status = String(value || '').toLowerCase();
-  if (status === 'success' || status === 'paid' || status === 'captured') return 'paid';
-  if (status === 'authorized') return 'pending';
-  if (status === 'cancelled' || status === 'canceled') return 'cancelled';
-  if (status === 'failed') return 'failed';
-  if (status === 'created') return 'created';
-  return 'pending';
+  return normalizePaymentStatusValue(value);
 }
 
 function buildPaymentTransactionId(seedValue = Date.now()) {
-  const digits = String(seedValue || Date.now()).replace(/\D/g, '') || String(Date.now());
-  return digits.slice(-10).padStart(10, '0');
+  return buildPaymentTransactionIdValue(seedValue);
 }
 
 function buildPaymentUserReference(userId) {
-  return String(userId || '')
-    .replace(/\D/g, '')
-    .slice(-6)
-    .padStart(6, '0');
+  return buildPaymentUserReferenceValue(userId);
 }
 
 function appBaseUrlForRequest(req) {
-  const hostHeader = String(req.get('host') || '').trim();
-  const hostname = hostHeader.split(':')[0];
-  const isLocalhost = ['127.0.0.1', 'localhost', '::1'].includes(hostname);
-  if (isLocalhost) return appBaseUrl;
-
-  const forwardedProto = String(req.get('x-forwarded-proto') || '').split(',')[0].trim();
-  const protocol = forwardedProto || req.protocol || 'https';
-  return `${protocol}://${hostHeader}`.replace(/\/+$/, '');
+  return resolveAppBaseUrlForRequest(req, appBaseUrl);
 }
 
 function buildPaymentsRedirect(req, status, paymentId, extra = {}) {
-  const search = new URLSearchParams({
-    paymentStatus: status,
-    ...(paymentId ? { paymentId: String(paymentId) } : {}),
-    ...Object.fromEntries(Object.entries(extra).filter(([, value]) => value !== undefined && value !== null && value !== '')),
-  });
-  return `${appBaseUrlForRequest(req)}/payments?${search.toString()}`;
+  return buildPaymentsRedirectValue({ req, status, paymentId, appBaseUrl, extra });
 }
 
 async function reconcilePaymentWithRazorpay(payment, { razorpayPaymentId, razorpayOrderId, razorpaySignature, fallbackStatus } = {}) {
-  if (!payment) return { ok: false, error: 'Payment not found' };
-
-  const paymentId = String(razorpayPaymentId || payment.razorpay_payment_id || '').trim();
-  const orderId = String(razorpayOrderId || payment.razorpay_order_id || '').trim();
-  const signature = String(razorpaySignature || payment.razorpay_signature || '').trim();
-
-  if (payment.provider === 'razorpay' && payment.razorpay_order_id && orderId && payment.razorpay_order_id !== orderId) {
-    payment.status = 'failed';
-    payment.updated_at = new Date().toISOString();
-    persistStore();
-    return { ok: false, error: 'Razorpay order mismatch', payment };
-  }
-
-  if (signature && paymentId && payment.razorpay_order_id && !verifyRazorpaySignature(payment.razorpay_order_id, paymentId, signature)) {
-    payment.status = 'failed';
-    payment.razorpay_payment_id = paymentId;
-    payment.updated_at = new Date().toISOString();
-    persistStore();
-    return { ok: false, error: 'Razorpay signature verification failed', payment };
-  }
-
-  let gatewayPayment = null;
-  if (paymentId) {
-    gatewayPayment = await fetchRazorpayPayment(paymentId);
-  }
-
-  const gatewayStatus = normalizePaymentStatus(gatewayPayment?.status || fallbackStatus || payment.status);
-  payment.status = gatewayStatus;
-  payment.razorpay_payment_id = paymentId || payment.razorpay_payment_id;
-  payment.razorpay_signature = signature || payment.razorpay_signature;
-  payment.gateway_status = gatewayPayment?.status || payment.gateway_status || null;
-  payment.gateway_method = gatewayPayment?.method || payment.gateway_method || null;
-  payment.updated_at = new Date().toISOString();
-
-  const user = store.users.find((item) => item.user_id === payment.payer_id);
-  if (gatewayStatus === 'paid' && !payment.wallet_credited_at && user) {
-    user.wallet_balance = Number(user.wallet_balance || 0) + Number(payment.amount || 0);
-    payment.wallet_credited_at = new Date().toISOString();
-    notifyUserMobile(payment.payer_id, 'Payment successful', `Payment of INR ${payment.amount} was completed.`);
-  }
-
-  persistStore();
-  return { ok: gatewayStatus === 'paid', payment, walletBalance: Number(user?.wallet_balance || 0), gatewayPayment };
+  return reconcilePaymentWithRazorpayValue({
+    payment,
+    razorpayPaymentId,
+    razorpayOrderId,
+    razorpaySignature,
+    fallbackStatus,
+    store,
+    persistStore,
+    notifyUserMobile,
+    razorpayKeyId,
+    razorpayKeySecret,
+  });
 }
 
 function haversineKm(firstLat, firstLng, secondLat, secondLng) {
-  if ([firstLat, firstLng, secondLat, secondLng].some((value) => Number.isNaN(Number(value)))) return null;
-  const earthRadiusKm = 6371;
-  const toRadians = (value) => (Number(value) * Math.PI) / 180;
-  const latDelta = toRadians(secondLat - firstLat);
-  const lngDelta = toRadians(secondLng - firstLng);
-  const a =
-    Math.sin(latDelta / 2) ** 2 +
-    Math.cos(toRadians(firstLat)) * Math.cos(toRadians(secondLat)) * Math.sin(lngDelta / 2) ** 2;
-  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return haversineKmValue(firstLat, firstLng, secondLat, secondLng);
 }
 
 function rideMatchesRoute(ride, origin, destination) {
-  const originText = normalizeText(origin);
-  const destinationText = normalizeText(destination);
-  const rideOrigin = `${ride.origin} ${ride.pickup_point}`.toLowerCase();
-  const rideDestination = `${ride.destination} ${ride.drop_point}`.toLowerCase();
-  return (!originText || rideOrigin.includes(originText) || originText.includes(normalizeText(ride.origin))) &&
-    (!destinationText || rideDestination.includes(destinationText) || destinationText.includes(normalizeText(ride.destination)));
+  return rideMatchesRouteValue(ride, origin, destination, normalizeText);
 }
 
 function rideVehicle(ride) {
-  return store.vehicles.find((vehicle) => vehicle.vehicle_id === ride.vehicle_id) || null;
+  return rideVehicleValue(store, ride);
 }
 
 function rideOwnerBookings(userId) {
-  const ownerRideIds = store.rides
-    .filter((ride) => ride.driver_id === userId)
-    .map((ride) => ride.ride_id);
-  return store.bookings.filter((booking) => ownerRideIds.includes(booking.ride_id));
+  return rideOwnerBookingsValue(store, userId);
 }
 
 function publicBooking(booking) {
-  const ride = store.rides.find((item) => item.ride_id === booking.ride_id) || null;
-  const passenger = store.users.find((item) => item.user_id === booking.passenger_id) || null;
-  const vehicle = ride ? rideVehicle(ride) : null;
-  return {
-    ...booking,
-    ride,
-    passenger: passenger ? publicUser(passenger) : null,
-    vehicle,
-  };
+  return publicBookingValue(store, publicUser, booking);
 }
 
 function canAccessRideChat({ ride, userId, receiverId }) {
-  if (!ride) return false;
-  if (ride.driver_id !== userId) {
-    return store.bookings.some(
-      (booking) =>
-        booking.ride_id === ride.ride_id &&
-        booking.passenger_id === userId &&
-        ['requested', 'confirmed'].includes(String(booking.status || '').toLowerCase()),
-    );
-  }
-
-  if (receiverId) {
-    return store.bookings.some(
-      (booking) =>
-        booking.ride_id === ride.ride_id &&
-        booking.passenger_id === receiverId &&
-        ['requested', 'confirmed'].includes(String(booking.status || '').toLowerCase()),
-    );
-  }
-
-  return store.bookings.some(
-    (booking) => booking.ride_id === ride.ride_id && ['requested', 'confirmed'].includes(String(booking.status || '').toLowerCase()),
-  );
+  return canAccessRideChatValue(store, { ride, userId, receiverId });
 }
 
 function recalculateRideAvailability(ride) {
-  const confirmedSeats = store.bookings
-    .filter((booking) => booking.ride_id === ride.ride_id && String(booking.status || '').toLowerCase() === 'confirmed')
-    .reduce((sum, booking) => sum + Number(booking.seats_booked || 0), 0);
-
-  ride.seats_available = Math.max(0, Number(ride.total_seats || 0) - confirmedSeats);
-  ride.status = ride.seats_available === 0 ? 'full' : 'published';
-  ride.updated_at = new Date().toISOString();
+  return recalculateRideAvailabilityValue(store, ride);
 }
 
 function publicMessage(message) {
-  const sender = store.users.find((user) => user.user_id === message.sender_id);
-  const receiver = store.users.find((user) => user.user_id === message.receiver_id);
-  return {
-    ...message,
-    sender: sender ? publicUser(sender) : null,
-    receiver: receiver ? publicUser(receiver) : null,
-  };
+  return publicMessageValue(store, publicUser, message);
 }
 
 function notifyUserMobile(userId, title, message, variables) {
@@ -1202,6 +1087,74 @@ app.get('/api/admin/ad-analytics', requireAuth, requireRole('admin'), (_req, res
     stateWiseRevenue: [{ state: 'Karnataka', revenue: totalRevenue }],
     placementWiseRevenue: [{ placement: 'search', revenue: totalRevenue }],
   });
+});
+
+app.get('/api/searches/recent', requireAuth, (req, res) => {
+  const recentSearches = (store.recent_searches || [])
+    .filter((item) => Number(item.user_id) === req.user.sub)
+    .sort((first, second) => new Date(second.updated_at || second.created_at || 0).getTime() - new Date(first.updated_at || first.created_at || 0).getTime())
+    .slice(0, 3);
+
+  res.json({ ok: true, data: recentSearches });
+});
+
+app.post('/api/searches/recent', requireAuth, (req, res) => {
+  const missing = requireFields(req.body, ['from', 'to', 'date', 'passengers']);
+  if (missing.length) return badRequest(res, missing);
+
+  const from = String(req.body.from || '').trim();
+  const to = String(req.body.to || '').trim();
+  const date = String(req.body.date || '').trim();
+  const passengers = Math.max(1, Number(req.body.passengers || 1));
+  const dateValue = String(req.body.dateValue || '').trim();
+  const fromLat = req.body.fromLat === undefined || req.body.fromLat === null || req.body.fromLat === '' ? null : Number(req.body.fromLat);
+  const fromLng = req.body.fromLng === undefined || req.body.fromLng === null || req.body.fromLng === '' ? null : Number(req.body.fromLng);
+  const toLat = req.body.toLat === undefined || req.body.toLat === null || req.body.toLat === '' ? null : Number(req.body.toLat);
+  const toLng = req.body.toLng === undefined || req.body.toLng === null || req.body.toLng === '' ? null : Number(req.body.toLng);
+  const normalizedKey = `${normalizeText(from)}|${normalizeText(to)}|${dateValue || normalizeText(date)}|${passengers}`;
+
+  store.recent_searches = (store.recent_searches || []).filter((item) => {
+    if (Number(item.user_id) !== req.user.sub) return true;
+    const itemKey = `${normalizeText(item.from)}|${normalizeText(item.to)}|${item.date_value || normalizeText(item.date)}|${Number(item.passengers || 1)}`;
+    return itemKey !== normalizedKey;
+  });
+
+  const timestamp = new Date().toISOString();
+  const recentSearch = {
+    recent_search_id: nextId(store.recent_searches, 'recent_search_id'),
+    user_id: req.user.sub,
+    from,
+    to,
+    date,
+    date_value: dateValue,
+    passengers,
+    from_lat: Number.isFinite(fromLat) ? fromLat : null,
+    from_lng: Number.isFinite(fromLng) ? fromLng : null,
+    to_lat: Number.isFinite(toLat) ? toLat : null,
+    to_lng: Number.isFinite(toLng) ? toLng : null,
+    created_at: timestamp,
+    updated_at: timestamp,
+  };
+
+  store.recent_searches.unshift(recentSearch);
+
+  const userRecentSearches = store.recent_searches
+    .filter((item) => Number(item.user_id) === req.user.sub)
+    .sort((first, second) => new Date(second.updated_at || second.created_at || 0).getTime() - new Date(first.updated_at || first.created_at || 0).getTime());
+  const keepIds = new Set(userRecentSearches.slice(0, 3).map((item) => item.recent_search_id));
+  store.recent_searches = store.recent_searches.filter((item) => Number(item.user_id) !== req.user.sub || keepIds.has(item.recent_search_id));
+
+  persistStore();
+  res.status(201).json({ ok: true, data: userRecentSearches.slice(0, 3) });
+});
+
+app.delete('/api/searches/recent', requireAuth, (req, res) => {
+  const beforeCount = (store.recent_searches || []).length;
+  store.recent_searches = (store.recent_searches || []).filter((item) => Number(item.user_id) !== req.user.sub);
+  if (store.recent_searches.length !== beforeCount) {
+    persistStore();
+  }
+  res.json({ ok: true });
 });
 
 app.get('/api/payments', requireAuth, (req, res) => {

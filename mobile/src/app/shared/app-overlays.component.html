@@ -1,0 +1,248 @@
+<div class="success-overlay" *ngIf="vm.showPublishSuccess">
+  <article class="success-dialog">
+    <ion-icon name="checkmark-circle-outline"></ion-icon>
+    <h2>Ride Published Successfully</h2>
+    <p>Your ride is now visible to passengers on this route.</p>
+    <button type="button" (click)="vm.closePublishSuccess()">Done</button>
+  </article>
+</div>
+
+<div class="success-overlay" *ngIf="vm.withdrawDialogOpen">
+  <article class="success-dialog withdraw-dialog">
+    <div class="section-title compact">
+      <h2>Withdraw to Bank</h2>
+      <p>Enter Indian bank details to process wallet withdrawal via Razorpay.</p>
+    </div>
+    <label class="form-row input-row">
+      <span>
+        <small>Account holder name</small>
+        <input [(ngModel)]="vm.withdrawForm.accountHolderName" aria-label="Account holder name" autocomplete="name" />
+      </span>
+      <ion-icon name="person-circle-outline"></ion-icon>
+    </label>
+    <label class="form-row input-row">
+      <span>
+        <small>Bank name</small>
+        <input [(ngModel)]="vm.withdrawForm.bankName" aria-label="Bank name" autocomplete="organization" />
+      </span>
+      <ion-icon name="business-outline"></ion-icon>
+    </label>
+    <label class="form-row input-row">
+      <span>
+        <small>Account number</small>
+        <input [(ngModel)]="vm.withdrawForm.accountNumber" aria-label="Account number" inputmode="numeric" maxlength="18" />
+      </span>
+      <ion-icon name="card-outline"></ion-icon>
+    </label>
+    <label class="form-row input-row">
+      <span>
+        <small>Confirm account number</small>
+        <input [(ngModel)]="vm.withdrawForm.confirmAccountNumber" aria-label="Confirm account number" inputmode="numeric" maxlength="18" />
+      </span>
+      <ion-icon name="checkmark-done-outline"></ion-icon>
+    </label>
+    <label class="form-row input-row">
+      <span>
+        <small>IFSC code</small>
+        <input [(ngModel)]="vm.withdrawForm.ifscCode" aria-label="IFSC code" maxlength="11" style="text-transform: uppercase" />
+      </span>
+      <ion-icon name="git-branch-outline"></ion-icon>
+    </label>
+    <label class="form-row input-row">
+      <span>
+        <small>Withdraw amount</small>
+        <input type="number" min="1" [max]="vm.walletBalance" [(ngModel)]="vm.withdrawForm.amount" aria-label="Withdraw amount" />
+      </span>
+      <ion-icon name="wallet-outline"></ion-icon>
+    </label>
+    <div class="withdraw-dialog-note">
+      <strong>Available balance: INR {{ vm.walletBalance | number: '1.0-0' }}</strong>
+      <span>Confirm account number carefully before processing.</span>
+    </div>
+    <div class="dual-actions withdraw-dialog-actions">
+      <button type="button" (click)="vm.closeWithdrawDialog()" [disabled]="vm.withdrawalProcessing">Cancel</button>
+      <button type="button" (click)="vm.processWalletWithdrawal()" [disabled]="vm.withdrawalProcessing">
+        {{ vm.withdrawalProcessing ? 'Processing...' : 'Confirm with Razorpay' }}
+      </button>
+    </div>
+  </article>
+</div>
+
+<div class="success-overlay" *ngIf="vm.selectedBookingRequest">
+  <article class="success-dialog booking-request-dialog">
+    <img [src]="vm.selectedBookingRequest.passengerPhoto" [alt]="vm.selectedBookingRequest.passengerName" />
+    <h2>{{ vm.selectedBookingRequest.passengerName }}</h2>
+    <p><ion-icon name="shield-checkmark-outline"></ion-icon>{{ vm.selectedBookingRequest.verified ? 'Verified passenger' : 'Verification pending' }}</p>
+    <div class="booking-detail-list">
+      <span><small>Route</small><strong>{{ vm.selectedBookingRequest.route }}</strong></span>
+      <span><small>From</small><strong>{{ vm.selectedBookingRequest.from }}</strong></span>
+      <span><small>To</small><strong>{{ vm.selectedBookingRequest.to }}</strong></span>
+      <span><small>Vehicle</small><strong>{{ vm.selectedBookingRequest.vehicle }}</strong></span>
+      <span><small>Seats requested</small><strong>{{ vm.selectedBookingRequest.seatsBooked || 1 }}</strong></span>
+      <span><small>Contact</small><strong>{{ vm.selectedBookingRequest.passengerPhone }}</strong></span>
+      <span *ngIf="vm.selectedBookingRequest.passengerEmail"><small>Email</small><strong>{{ vm.selectedBookingRequest.passengerEmail }}</strong></span>
+      <span><small>Gov ID</small><strong>{{ vm.selectedBookingRequest.passengerGovIdNumber }}</strong></span>
+    </div>
+    <div class="dual-actions booking-request-actions">
+      <button type="button" class="secondary-mini" (click)="vm.contactBookingPassenger('phone')">Phone</button>
+      <button type="button" class="secondary-mini" (click)="vm.contactBookingPassenger('chat')">Chat</button>
+      <button type="button" class="secondary-mini" (click)="vm.contactBookingPassenger('email')">Email</button>
+    </div>
+    <div class="dual-actions booking-request-actions">
+      <button type="button" class="secondary-mini" (click)="vm.rejectBookingRequest()">Reject</button>
+      <button type="button" (click)="vm.approveBookingRequest()">Confirm Booking</button>
+    </div>
+    <button type="button" (click)="vm.closeBookingRequestPopup()">Close</button>
+  </article>
+</div>
+
+<div class="success-overlay" *ngIf="vm.ownerProfileOpen">
+  <article class="success-dialog booking-request-dialog owner-profile-dialog">
+    <img [src]="vm.driverPublicProfile.photo" [alt]="vm.driverPublicProfile.name" />
+    <h2>{{ vm.driverPublicProfile.name }}</h2>
+    <p><ion-icon name="shield-checkmark-outline"></ion-icon>{{ vm.driverPublicProfile.verification }}</p>
+    <p>{{ vm.driverPublicProfile.bio }}</p>
+    <div class="booking-detail-list">
+      <span><small>Rating</small><strong>{{ vm.driverPublicProfile.rating }} - {{ vm.driverPublicProfile.trips }} trips</strong></span>
+      <span><small>Contact</small><strong>{{ vm.driverPublicProfile.phone }}</strong></span>
+      <span><small>Email</small><strong>{{ vm.driverPublicProfile.email }}</strong></span>
+      <span><small>Vehicle</small><strong>{{ vm.driverPublicProfile.vehicle }}</strong></span>
+      <span><small>Car details</small><strong>{{ vm.driverPublicProfile.vehicleMeta }}</strong></span>
+      <span><small>Experience</small><strong>{{ vm.driverPublicProfile.yearsOnRide }}</strong></span>
+    </div>
+    <div class="profile-chip-row">
+      <span *ngFor="let mood of vm.driverPublicProfile.moods">{{ mood }}</span>
+    </div>
+    <button type="button" (click)="vm.closeOwnerProfile()">Close</button>
+  </article>
+</div>
+
+<div class="success-overlay" *ngIf="vm.selectedPassengerProfile">
+  <article class="success-dialog passenger-profile-dialog">
+    <img [src]="vm.selectedPassengerProfile.photo" [alt]="vm.selectedPassengerProfile.name" />
+    <h2>{{ vm.selectedPassengerProfile.name }}</h2>
+    <p><ion-icon name="shield-checkmark-outline"></ion-icon>{{ vm.selectedPassengerProfile.verified ? 'Verified passenger' : 'Verification pending' }}</p>
+    <div class="profile-chip-row single-row">
+      <span *ngFor="let mood of vm.selectedPassengerProfile.moods">{{ mood }}</span>
+    </div>
+    <button type="button" (click)="vm.closePassengerProfile()">Close</button>
+  </article>
+</div>
+
+<div class="success-overlay" *ngIf="vm.selectedAdminUser">
+  <article class="success-dialog admin-user-detail-dialog">
+    <header class="admin-detail-head">
+      <img [src]="vm.selectedAdminUser.photo" [alt]="vm.selectedAdminUser.name" />
+      <div>
+        <h2>{{ vm.selectedAdminUser.name }}</h2>
+        <p>{{ vm.selectedAdminUser.role | titlecase }} - {{ vm.selectedAdminUser.phone }}</p>
+        <small>{{ vm.selectedAdminUser.email || 'No email added' }}</small>
+      </div>
+      <b [ngClass]="vm.adminStatusClass(vm.selectedAdminUser.verification)">{{ vm.selectedAdminUser.verification | titlecase }}</b>
+    </header>
+    <section class="admin-detail-grid">
+      <span><small>Trips</small><strong>{{ vm.selectedAdminUser.rides }}</strong></span>
+      <span><small>Wallet</small><strong>INR {{ vm.selectedAdminUser.balance | number: '1.0-0' }}</strong></span>
+      <span><small>Warnings</small><strong>{{ vm.selectedAdminUser.warningCount }}/2</strong></span>
+      <span><small>Gov ID</small><strong>{{ vm.selectedAdminUser.govIdNumber || 'Not added' }}</strong></span>
+    </section>
+    <section class="admin-documents-panel">
+      <div class="section-title compact">
+        <h2>{{ vm.selectedAdminUser.role === 'owner' ? 'Owner / vehicle documents' : 'Passenger ID documents' }}</h2>
+        <p>Review uploaded proof before approving or requesting reupload.</p>
+      </div>
+      <article class="admin-document-row document-preview-row" *ngFor="let doc of vm.selectedAdminUserDocuments">
+        <button class="document-thumb" type="button" (click)="vm.openAdminDocumentPreview(doc)" aria-label="Preview document">
+          <img [src]="vm.adminDocumentPreviewUrl(doc)" [alt]="doc.label" />
+        </button>
+        <div>
+          <strong>{{ doc.label }}</strong>
+          <span>{{ doc.value }}</span>
+        </div>
+        <b [ngClass]="vm.adminStatusClass(doc.status)">{{ doc.status | titlecase }}</b>
+        <button class="icon-button document-eye-button" type="button" (click)="vm.openAdminDocumentPreview(doc)" aria-label="View document">
+          <ion-icon name="eye-outline"></ion-icon>
+        </button>
+      </article>
+    </section>
+    <section class="admin-documents-panel">
+      <div class="section-title compact">
+        <h2>{{ vm.selectedAdminUser.name }} transactions</h2>
+        <p>Ride, payout, refund, and wallet records for this user only.</p>
+      </div>
+      <article class="admin-document-row" *ngFor="let transaction of vm.selectedAdminUserTransactions">
+        <ion-icon name="wallet-outline"></ion-icon>
+        <div>
+          <strong>{{ transaction.title }}</strong>
+          <span>{{ transaction.status }} - {{ transaction.role }}</span>
+        </div>
+        <b [class.credit]="transaction.amount > 0">{{ transaction.amount > 0 ? '+' : '' }}INR {{ transaction.amount | number: '1.0-0' }}</b>
+      </article>
+    </section>
+    <div class="admin-detail-actions">
+      <button type="button" (click)="vm.approveAdminUser(vm.selectedAdminUser)">Approve</button>
+      <button type="button" class="secondary-mini" (click)="vm.requestAdminUserReupload(vm.selectedAdminUser)">Reupload</button>
+      <button type="button" class="danger-link" (click)="vm.rejectAdminUser(vm.selectedAdminUser)">Reject</button>
+      <button type="button" class="secondary-mini" (click)="vm.closeAdminUserDetails()">Close</button>
+    </div>
+  </article>
+</div>
+
+<div class="success-overlay" *ngIf="vm.selectedAdminVehicle">
+  <article class="success-dialog admin-user-detail-dialog">
+    <header class="admin-detail-head">
+      <ion-icon name="car-outline"></ion-icon>
+      <div>
+        <h2>{{ vm.selectedAdminVehicle.vehicle }}</h2>
+        <p>{{ vm.selectedAdminVehicle.owner }} - {{ vm.selectedAdminVehicle.plate }}</p>
+        <small>{{ vm.selectedAdminVehicle.color || 'Color pending' }} - {{ vm.selectedAdminVehicle.seats || 4 }} seats</small>
+      </div>
+      <b [ngClass]="vm.adminStatusClass(vm.selectedAdminVehicle.status)">{{ vm.selectedAdminVehicle.status | titlecase }}</b>
+    </header>
+    <section class="admin-detail-grid">
+      <span><small>Owner</small><strong>{{ vm.selectedAdminVehicle.owner }}</strong></span>
+      <span><small>Plate</small><strong>{{ vm.selectedAdminVehicle.plate }}</strong></span>
+      <span><small>Vehicle</small><strong>{{ vm.selectedAdminVehicle.vehicle }}</strong></span>
+      <span><small>Documents</small><strong>{{ vm.selectedAdminVehicle.documents }}</strong></span>
+    </section>
+    <section class="admin-documents-panel">
+      <div class="section-title compact">
+        <h2>Vehicle documents</h2>
+        <p>Tap the square preview or eye icon to view each uploaded document.</p>
+      </div>
+      <article class="admin-document-row document-preview-row" *ngFor="let doc of vm.selectedAdminVehicleDocuments">
+        <button class="document-thumb" type="button" (click)="vm.openAdminDocumentPreview(doc)" aria-label="Preview vehicle document">
+          <img [src]="vm.adminDocumentPreviewUrl(doc)" [alt]="doc.label" />
+        </button>
+        <div>
+          <strong>{{ doc.label }}</strong>
+          <span>{{ doc.value }}</span>
+        </div>
+        <b [ngClass]="vm.adminStatusClass(doc.status)">{{ doc.status | titlecase }}</b>
+        <button class="icon-button document-eye-button" type="button" (click)="vm.openAdminDocumentPreview(doc)" aria-label="View vehicle document">
+          <ion-icon name="eye-outline"></ion-icon>
+        </button>
+      </article>
+    </section>
+    <div class="admin-detail-actions">
+      <button type="button" (click)="vm.approveAdminVehicle(vm.selectedAdminVehicle)">Approve</button>
+      <button type="button" class="secondary-mini" (click)="vm.requestVehicleReupload(vm.selectedAdminVehicle)">Reupload</button>
+      <button type="button" class="secondary-mini" (click)="vm.closeAdminVehicleDetails()">Close</button>
+    </div>
+  </article>
+</div>
+
+<div class="success-overlay" *ngIf="vm.selectedAdminDocument">
+  <article class="success-dialog document-preview-dialog">
+    <header class="section-title compact">
+      <h2>{{ vm.selectedAdminDocument.label }}</h2>
+      <p>{{ vm.selectedAdminDocument.value }}</p>
+    </header>
+    <img [src]="vm.adminDocumentPreviewUrl(vm.selectedAdminDocument)" [alt]="vm.selectedAdminDocument.label" />
+    <b [ngClass]="vm.adminStatusClass(vm.selectedAdminDocument.status)">{{ vm.selectedAdminDocument.status | titlecase }}</b>
+    <div class="document-preview-actions">
+      <a [href]="vm.adminDocumentPreviewUrl(vm.selectedAdminDocument)" [download]="vm.selectedAdminDocument.label + '.png'">Download</a>
+      <button type="button" (click)="vm.closeAdminDocumentPreview()">Close</button>
+    </div>
+  </article>
+</div>

@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ViewEncapsulation } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { NavigationEnd, Router } from '@angular/router';
@@ -59,6 +59,40 @@ import { AuthService } from '../services/auth.service';
 import { RealtimeService } from '../services/realtime.service';
 import { RideApiService } from '../services/ride-api.service';
 import { filter, forkJoin } from 'rxjs';
+import {
+  adminLogIcon,
+  adminRoleLabel,
+  buildPaymentTransactionId as buildWalletTransactionId,
+  buildReferralCode as buildReferralCodeValue,
+  buildTimestampTransactionId,
+  calculateAgeFromBirthDate as calculateAgeFromBirthDateValue,
+  formatAdminDate,
+  formatAdminDateTime,
+  formatAdminLabel,
+  formatAdminTime,
+  formatPaymentStatus as formatWalletPaymentStatus,
+  formatPaymentTimestamp as formatWalletPaymentTimestamp,
+  formatPriorityLabel,
+  mapAdHistory,
+  mapAdInvoice,
+  mapAdPartner,
+  mapAdminAd,
+  mapAdminLogs,
+  mapAdminLogPriority,
+  mapAdminLogType,
+  mapAdminTours,
+  mapAdminTransactions,
+  mapAdminUser,
+  mapAdminUserDocuments,
+  mapAdminUserStatus,
+  mapAdminVehicle,
+  mapAdminWalletTransactions,
+  mapAdStatus,
+  mapInvoiceStatus,
+  mapVerificationStatus,
+  normalizeReferralCode as normalizeReferralCodeValue,
+  normalizedVehicleStatus as normalizedVehicleStatusValue,
+} from './home-utils';
 
 type LocationField = 'from' | 'to';
 type AdminMoneyTab = 'admin' | 'owners' | 'passengers';
@@ -347,8 +381,10 @@ interface AdHistory {
   templateUrl: 'home.page.html',
   styleUrls: ['home.page.scss'],
   standalone: false,
+  encapsulation: ViewEncapsulation.None,
 })
 export class HomePage {
+  readonly viewModel = this;
   apiUrl = environment.apiUrl;
   platform = Capacitor.getPlatform();
   showIntroSplash = Capacitor.isNativePlatform();
@@ -841,11 +877,17 @@ export class HomePage {
       badge: 'Eco',
     },
   ];
-  recentSearches = [
-    { from: 'Bengaluru', to: 'Mysuru', date: 'Today', passengers: 2 },
-    { from: 'HSR Layout', to: 'Electronic City', date: 'Tomorrow', passengers: 1 },
-    { from: 'Whitefield', to: 'Airport', date: 'Fri, 8 May', passengers: 3 },
-  ];
+  recentSearches: Array<{
+    from: string;
+    to: string;
+    date: string;
+    dateValue?: string;
+    passengers: number;
+    fromLat?: number | null;
+    fromLng?: number | null;
+    toLat?: number | null;
+    toLng?: number | null;
+  }> = [];
   sponsoredAds = [
     {
       label: 'Wallet offer',
@@ -1500,6 +1542,7 @@ export class HomePage {
     this.ensureReferralCode();
     this.syncReferralRewardsForCurrentUser();
     this.realtime.connect();
+    this.loadRecentSearches();
     if (user.role === 'admin') {
       this.loadAdminData();
     }
@@ -1576,6 +1619,9 @@ export class HomePage {
     if (route === '/profile') {
       this.loadProfile();
     }
+    if (route === '/search') {
+      this.loadRecentSearches();
+    }
     if (route === '/admin') {
       this.loadAdminData();
     }
@@ -1605,6 +1651,7 @@ export class HomePage {
       if (this.currentRoute === '/inbox') this.loadConversations();
       if (this.currentRoute === '/chat') this.loadChatHistory();
       if (this.currentRoute === '/payments') this.loadPayments();
+      if (this.currentRoute === '/search') this.loadRecentSearches();
       if (this.currentRoute === '/results' || this.currentRoute === '/search') {
         this.searchRides();
       }
@@ -1775,14 +1822,7 @@ export class HomePage {
   }
 
   private buildReferralCode(name: string, phone: string) {
-    const initials = String(name || 'RS')
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part.charAt(0).toUpperCase())
-      .join('');
-    const digits = String(phone || '').replace(/\D/g, '').slice(-4).padStart(4, '0');
-    return `${initials || 'RS'}${digits}`;
+    return buildReferralCodeValue(name, phone);
   }
 
   private applyReferralParamsFromUrl(url: string) {
@@ -1805,7 +1845,7 @@ export class HomePage {
   }
 
   private normalizeReferralCode(value: string) {
-    return String(value || '').replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 12);
+    return normalizeReferralCodeValue(value);
   }
 
   async copyReferralCode() {
@@ -1845,16 +1885,7 @@ export class HomePage {
   }
 
   private calculateAgeFromBirthDate(value: string) {
-    if (!value) return null;
-    const birthDate = new Date(value);
-    if (Number.isNaN(birthDate.getTime())) return null;
-    const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDifference = today.getMonth() - birthDate.getMonth();
-    if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birthDate.getDate())) {
-      age -= 1;
-    }
-    return age >= 0 ? age : null;
+    return calculateAgeFromBirthDateValue(value);
   }
 
   saveAdminReferralSettings() {
@@ -2089,6 +2120,33 @@ export class HomePage {
     });
   }
 
+  loadRecentSearches() {
+    if (!this.auth.isAuthenticated || this.auth.token === 'demo-token') {
+      this.recentSearches = [];
+      return;
+    }
+
+    this.api.getRecentSearches().subscribe({
+      next: (response: any) => {
+        const data = Array.isArray(response.data) ? response.data : [];
+        this.recentSearches = data.map((item: any) => ({
+          from: item.from,
+          to: item.to,
+          date: item.date,
+          dateValue: item.date_value || '',
+          passengers: Number(item.passengers || 1),
+          fromLat: item.from_lat ?? null,
+          fromLng: item.from_lng ?? null,
+          toLat: item.to_lat ?? null,
+          toLng: item.to_lng ?? null,
+        }));
+      },
+      error: () => {
+        this.recentSearches = [];
+      },
+    });
+  }
+
   private ensurePublishVehicleSelection() {
     if (this.selectedPublishVehicle?.vehicleId) return;
     const firstVerifiedVehicle = this.verifiedPublishVehicles[0];
@@ -2223,239 +2281,57 @@ export class HomePage {
   }
 
   private mapAdminUser(user: any, role: 'owner' | 'passenger', rides: any[], bookings: any[]): AdminUser {
-    const rideCount =
-      role === 'owner'
-        ? rides.filter((ride) => Number(ride.driver_id) === Number(user.user_id)).length
-        : bookings.filter((booking) => Number(booking.passenger_id) === Number(user.user_id)).length;
     return {
-      id: Number(user.user_id),
-      name: user.full_name || 'User',
-      role,
+      ...mapAdminUser({
+        user,
+        role,
+        rides,
+        bookings,
+        mapAdminUserDocuments: (nextUser, nextRole) => this.mapAdminUserDocuments(nextUser, nextRole),
+      }),
       photo: user.photo_url || this.avatarForName(user.full_name || 'User'),
-      phone: user.phone || '',
-      email: user.email || '',
-      status: this.mapAdminUserStatus(user.status, Number(user.warning_count || 0)),
-      verification: this.mapVerificationStatus(role === 'owner' ? user.verification_status : user.passenger_verification_status),
-      rides: rideCount,
-      balance: Number(user.wallet_balance || 0),
-      warningCount: Number(user.warning_count || 0),
-      govIdNumber: user.gov_id_number || '',
-      documents: this.mapAdminUserDocuments(user, role),
     };
   }
 
   private mapAdminUserDocuments(user: any, role: 'owner' | 'passenger'): AdminDocument[] {
-    const status = this.mapVerificationStatus(role === 'owner' ? user.verification_status : user.passenger_verification_status);
-    return [
-      {
-        label: role === 'owner' ? 'Owner Gov ID front' : 'Passenger Gov ID front',
-        value: user.gov_id_front_url ? 'Uploaded' : 'Not uploaded',
-        status,
-        previewUrl: user.gov_id_front_url || undefined,
-      },
-      {
-        label: role === 'owner' ? 'Owner Gov ID back' : 'Passenger Gov ID back',
-        value: user.gov_id_back_url ? 'Uploaded' : 'Not uploaded',
-        status,
-        previewUrl: user.gov_id_back_url || undefined,
-      },
-    ];
+    return mapAdminUserDocuments(user, role);
   }
 
   private mapAdminVehicle(vehicle: any, users: any[]): AdminVehicleCase {
-    const owner = users.find((user: any) => Number(user.user_id) === Number(vehicle.owner_id));
-    const status = this.mapVerificationStatus(vehicle.status);
-    return {
-      id: Number(vehicle.vehicle_id),
-      ownerId: Number(vehicle.owner_id),
-      owner: owner?.full_name || 'Owner',
-      vehicle: `${vehicle.make || ''} ${vehicle.model || ''}`.trim(),
-      plate: vehicle.plate_number || '',
-      documents: [vehicle.rc_document_url, vehicle.front_photo_url, vehicle.back_photo_url].filter(Boolean).length
-        ? 'Uploaded documents available'
-        : 'Documents pending',
-      status,
-      color: vehicle.color || '',
-      seats: Number(vehicle.seats || 4),
-      documentItems: [
-        { label: 'RC book', value: vehicle.plate_number || 'Not uploaded', status, previewUrl: vehicle.rc_document_url || undefined },
-        { label: 'Vehicle front photo', value: vehicle.front_photo_url ? 'Uploaded' : 'Not uploaded', status, previewUrl: vehicle.front_photo_url || undefined },
-        { label: 'Vehicle back photo', value: vehicle.back_photo_url ? 'Uploaded' : 'Not uploaded', status, previewUrl: vehicle.back_photo_url || undefined },
-        { label: 'Insurance', value: vehicle.insurance_document_url ? 'Uploaded' : 'Not uploaded', status, previewUrl: vehicle.insurance_document_url || undefined },
-      ],
-    };
+    return mapAdminVehicle(vehicle, users);
   }
 
   private mapAdminTours(rides: any[], bookings: any[], users: any[], vehicles: any[]): AdminTour[] {
-    const driverTours = rides.map((ride: any) => {
-      const owner = users.find((user: any) => Number(user.user_id) === Number(ride.driver_id));
-      const vehicle = vehicles.find((item: any) => Number(item.vehicle_id) === Number(ride.vehicle_id));
-      return {
-        id: Number(ride.ride_id),
-        type: 'Vehicle tour' as const,
-        route: `${ride.origin || ''} to ${ride.destination || ''}`.trim(),
-        user: owner?.full_name || 'Owner',
-        vehicle: `${vehicle?.make || ''} ${vehicle?.model || ''}`.trim() || 'Vehicle',
-        status: this.formatAdminLabel(ride.status || 'published'),
-        amount: Number(ride.price_per_seat || 0) * Math.max(1, Number(ride.total_seats || 1)),
-      };
-    });
-    const passengerTours = bookings.map((booking: any) => {
-      const passenger = users.find((user: any) => Number(user.user_id) === Number(booking.passenger_id));
-      const ride = rides.find((item: any) => Number(item.ride_id) === Number(booking.ride_id));
-      const vehicle = vehicles.find((item: any) => Number(item.vehicle_id) === Number(ride?.vehicle_id));
-      return {
-        id: Number(`9${booking.booking_id}`),
-        type: 'Passenger tour' as const,
-        route: `${ride?.origin || ''} to ${ride?.destination || ''}`.trim(),
-        user: passenger?.full_name || 'Passenger',
-        vehicle: `${vehicle?.make || ''} ${vehicle?.model || ''}`.trim() || 'Vehicle',
-        status: this.formatAdminLabel(booking.status || 'requested'),
-        amount: Number(booking.amount || ride?.price_per_seat || 0) * Math.max(1, Number(booking.seats_booked || 1)),
-      };
-    });
-    return [...driverTours, ...passengerTours].sort((first, second) => second.id - first.id);
+    return mapAdminTours(rides, bookings, users, vehicles);
   }
 
   private mapAdminTransactions(transactions: any[], users: any[], rides: any[], bookings: any[]): AdminTransaction[] {
-    return transactions.map((item: any, index: number) => {
-      if (item.source === 'payment') {
-        const user = users.find((entry: any) => Number(entry.user_id) === Number(item.payer_id));
-        return {
-          id: Number(item.payment_id || index + 1),
-          user: user?.full_name || 'User',
-          role: this.adminRoleLabel(user?.role),
-          title: item.provider === 'razorpay' ? 'Wallet top-up' : 'Payment transaction',
-          amount: Number(item.amount || 0),
-          status: this.formatAdminLabel(item.status || 'pending'),
-        };
-      }
-      const bookingUser = users.find((entry: any) => Number(entry.user_id) === Number(item.passenger_id));
-      const ride = rides.find((entry: any) => Number(entry.ride_id) === Number(item.ride_id));
-      return {
-        id: Number(item.booking_id || index + 1),
-        user: bookingUser?.full_name || 'Passenger',
-        role: this.adminRoleLabel(bookingUser?.role),
-        title: `${this.formatAdminLabel(item.status || 'requested')} booking`,
-        amount: Number(item.amount || ride?.price_per_seat || 0) * Math.max(1, Number(item.seats_booked || 1)),
-        status: this.formatAdminLabel(item.status || 'requested'),
-      };
-    });
+    void bookings;
+    return mapAdminTransactions(transactions, users, rides);
   }
 
   private mapAdminWalletTransactions(payments: any[], users: any[]): AdminTransaction[] {
-    return payments
-      .map((payment: any) => {
-        const user = users.find((entry: any) => Number(entry.user_id) === Number(payment.payer_id));
-        const status = this.formatAdminLabel(payment.status || 'pending');
-        const amount = String(payment.status || '').toLowerCase() === 'paid' ? Number(payment.amount || 0) : 0;
-        const type: AdminTransaction['type'] =
-          amount > 0 ? 'Deposit' : status === 'Failed' ? 'Failed' : 'Adjustment';
-        return {
-          id: Number(payment.payment_id || Date.now()),
-          user: user?.full_name || 'User',
-          role: this.adminRoleLabel(user?.role),
-          title: payment.provider === 'razorpay' ? 'Wallet money added' : 'Wallet transaction',
-          amount,
-          status,
-          type,
-          date: this.formatAdminDate(payment.updated_at || payment.created_at),
-          time: this.formatAdminTime(payment.updated_at || payment.created_at),
-          method: payment.provider || 'Wallet',
-          reference: this.buildPaymentTransactionId(payment),
-        };
-      })
-      .sort((first, second) => second.id - first.id);
+    return mapAdminWalletTransactions(payments, users);
   }
 
   private mapAdminLogs(logs: any[]): AdminLog[] {
-    return logs.map((log: any) => {
-      const type = this.mapAdminLogType(log.activity_type);
-      return {
-        id: Number(log.log_id),
-        type,
-        action: log.action || this.formatAdminLabel(log.activity_type || 'activity'),
-        actor: Number(log.actor_user_id) === Number(this.auth.user?.user_id) ? 'Admin' : `User #${log.actor_user_id || ''}`.trim(),
-        target: [log.target_type, log.target_id].filter(Boolean).join(' '),
-        priority: this.mapAdminLogPriority(log.action, log.new_values),
-        icon: this.adminLogIcon(type),
-        createdAt: this.formatAdminDateTime(log.created_at),
-      };
-    });
+    return mapAdminLogs(logs, this.auth.user?.user_id);
   }
 
   private mapAdPartner(partner: any): AdPartner {
-    return {
-      id: Number(partner.partner_id),
-      partnerName: partner.partner_name || 'Partner',
-      companyName: partner.company_name || '',
-      contactPerson: partner.contact_person || '',
-      mobile: partner.mobile || '',
-      email: partner.email || '',
-      address: partner.address || '',
-      gstNumber: partner.gst_number || '',
-      type: this.formatAdminLabel(partner.partner_type || 'partner'),
-      priority: this.formatPriorityLabel(partner.priority),
-      status: String(partner.status || 'active').toLowerCase() === 'active' ? 'active' : 'disabled',
-      startDate: partner.agreement_start || partner.start_date || '',
-      endDate: partner.agreement_end || partner.end_date || '',
-    };
+    return mapAdPartner(partner);
   }
 
   private mapAdminAd(ad: any, partners: any[]): AdminAd {
-    const partner = partners.find((entry: any) => Number(entry.partner_id) === Number(ad.partner_id));
-    const impressions = Number(ad.impressions || 0);
-    const clicks = Number(ad.clicks || 0);
-    return {
-      id: Number(ad.ad_id),
-      name: ad.ad_name || 'Ad',
-      type: this.formatAdminLabel(ad.ad_type || 'banner'),
-      partner: partner?.partner_name || 'Partner',
-      size: ad.size || '',
-      placement: this.formatAdminLabel(ad.placement || 'search'),
-      area: ad.area || 'All India',
-      state: ad.state || 'All India',
-      startDate: ad.start_date || '',
-      endDate: ad.end_date || '',
-      impressions,
-      clicks,
-      ctr: impressions ? Number(((clicks / impressions) * 100).toFixed(1)) : 0,
-      status: this.mapAdStatus(ad.status),
-    };
+    return mapAdminAd(ad, partners);
   }
 
   private mapAdInvoice(invoice: any, ads: any[], partners: any[]): AdInvoice {
-    const ad = ads.find((entry: any) => Number(entry.ad_id) === Number(invoice.ad_id));
-    const partner = partners.find((entry: any) => Number(entry.partner_id) === Number(invoice.partner_id));
-    return {
-      invoiceNumber: invoice.invoice_number || '',
-      partnerName: partner?.partner_name || 'Partner',
-      adName: ad?.ad_name || 'Ad',
-      placement: this.formatAdminLabel(ad?.placement || 'search'),
-      runningDays: Number(invoice.running_days || 0),
-      baseAmount: Number(invoice.base_amount || 0),
-      gst: Number(invoice.gst_amount || 0),
-      finalAmount: Number(invoice.final_amount || 0),
-      paymentStatus: this.mapInvoiceStatus(invoice.payment_status),
-      paymentMode: this.formatAdminLabel(invoice.payment_mode || 'wallet'),
-      transactionRef: invoice.transaction_reference || 'Awaiting',
-    };
+    return mapAdInvoice(invoice, ads, partners);
   }
 
   private mapAdHistory(logs: any[], ads: any[]): AdHistory[] {
-    return logs
-      .filter((log: any) => String(log.activity_type || '').toLowerCase() === 'ads')
-      .map((log: any) => {
-        const ad = ads.find((entry: any) => Number(entry.ad_id) === Number(log.target_id));
-        return {
-          id: Number(log.log_id),
-          adName: ad?.ad_name || `Ad #${log.target_id || ''}`.trim(),
-          action: log.action || 'Updated',
-          details: JSON.stringify(log.new_values || log.old_values || {}),
-          adminUser: Number(log.actor_user_id) === Number(this.auth.user?.user_id) ? 'Admin' : `User #${log.actor_user_id || ''}`.trim(),
-          createdAt: this.formatAdminDateTime(log.created_at),
-        };
-      });
+    return mapAdHistory(logs, ads, this.auth.user?.user_id);
   }
 
   private applyAdminAnalytics(analytics: any, invoiceRows: any[]) {
@@ -2469,149 +2345,71 @@ export class HomePage {
   }
 
   private mapAdminUserStatus(status: string, warningCount: number): 'active' | 'blocked' | 'warning' {
-    const normalized = String(status || '').toLowerCase();
-    if (normalized === 'suspended' || normalized === 'blocked' || normalized === 'inactive') return 'blocked';
-    if (warningCount > 0) return 'warning';
-    return 'active';
+    return mapAdminUserStatus(status, warningCount);
   }
 
   private mapVerificationStatus(status: string): 'pending' | 'verified' | 'reupload' | 'rejected' {
-    const normalized = String(status || '').toLowerCase();
-    if (normalized === 'verified') return 'verified';
-    if (normalized === 'reupload') return 'reupload';
-    if (normalized === 'rejected') return 'rejected';
-    return 'pending';
+    return mapVerificationStatus(status);
   }
 
   private mapAdminLogType(value: string): AdminLog['type'] {
-    const normalized = String(value || '').toLowerCase();
-    if (normalized.includes('passenger')) return 'Passenger';
-    if (normalized.includes('ride')) return 'Ride';
-    if (normalized.includes('security')) return 'Security';
-    if (normalized.includes('ads')) return 'Ads';
-    return 'Owner';
+    return mapAdminLogType(value);
   }
 
   private mapAdminLogPriority(action: string, newValues: any): AdminLog['priority'] {
-    const text = `${action || ''} ${JSON.stringify(newValues || {})}`.toLowerCase();
-    if (text.includes('rejected') || text.includes('blocked') || text.includes('suspended')) return 'blocked';
-    if (text.includes('pending') || text.includes('reupload')) return 'pending';
-    if (text.includes('warning') || text.includes('failed')) return 'warning';
-    return 'active';
+    return mapAdminLogPriority(action, newValues);
   }
 
   private adminLogIcon(type: AdminLog['type']) {
-    const iconByType: Record<AdminLog['type'], string> = {
-      Passenger: 'person-circle-outline',
-      Owner: 'car-outline',
-      Ride: 'map-outline',
-      Security: 'lock-closed-outline',
-      Ads: 'notifications-outline',
-    };
-    return iconByType[type];
+    return adminLogIcon(type);
   }
 
   private adminRoleLabel(role: string) {
-    if (role === 'driver') return 'Owner';
-    if (role === 'admin') return 'Admin';
-    return 'Passenger';
+    return adminRoleLabel(role);
   }
 
   private mapAdStatus(status: string): 'active' | 'disabled' | 'expired' {
-    const normalized = String(status || '').toLowerCase();
-    if (normalized === 'expired') return 'expired';
-    if (normalized === 'disabled') return 'disabled';
-    return 'active';
+    return mapAdStatus(status);
   }
 
   private mapInvoiceStatus(status: string): 'Pending' | 'Paid' | 'Failed' | 'Refunded' | 'Partial Payment' {
-    const normalized = String(status || '').toLowerCase();
-    if (normalized === 'paid') return 'Paid';
-    if (normalized === 'failed') return 'Failed';
-    if (normalized === 'refunded') return 'Refunded';
-    if (normalized === 'partial_payment') return 'Partial Payment';
-    return 'Pending';
+    return mapInvoiceStatus(status);
   }
 
   private formatPriorityLabel(priority: string): 'High' | 'Medium' | 'Low' {
-    const normalized = String(priority || '').toLowerCase();
-    if (normalized === 'high') return 'High';
-    if (normalized === 'low') return 'Low';
-    return 'Medium';
+    return formatPriorityLabel(priority);
   }
 
   private formatAdminLabel(value: string) {
-    return String(value || '')
-      .replace(/[_-]+/g, ' ')
-      .replace(/\b\w/g, (char) => char.toUpperCase());
+    return formatAdminLabel(value);
   }
 
   private formatAdminDate(value: string) {
-    if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    return formatAdminDate(value);
   }
 
   private formatAdminTime(value: string) {
-    if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    return formatAdminTime(value);
   }
 
   private formatAdminDateTime(value: string) {
-    if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    return date.toLocaleString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return formatAdminDateTime(value);
   }
 
   private formatPaymentStatus(status: string) {
-    const normalized = String(status || '').trim().toLowerCase();
-    if (!normalized) return 'Pending';
-    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+    return formatWalletPaymentStatus(status);
   }
 
   private formatPaymentTimestamp(value: string) {
-    if (!value) return 'Now';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return 'Now';
-    return date.toLocaleString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
+    return formatWalletPaymentTimestamp(value);
   }
 
   private buildPaymentTransactionId(payment: any) {
-    const backendId = String(payment.transaction_id || '').replace(/\D/g, '');
-    if (backendId) {
-      return backendId.slice(-10).padStart(10, '0');
-    }
-    const rawDate = payment.updated_at || payment.created_at;
-    const date = rawDate ? new Date(rawDate) : new Date();
-    const millis = Number.isNaN(date.getTime()) ? Date.now() : date.getTime();
-    const timestampPart = String(millis).slice(-8);
-    const idPart = String(payment.payment_id || payment.id || 0)
-      .replace(/\D/g, '')
-      .slice(-2)
-      .padStart(2, '0');
-    return `${timestampPart}${idPart}`;
+    return buildWalletTransactionId(payment);
   }
 
   private buildTimestampTransactionId(value: string) {
-    const date = new Date(value);
-    const millis = Number.isNaN(date.getTime()) ? Date.now() : date.getTime();
-    return String(millis).slice(-10);
+    return buildTimestampTransactionId(value);
   }
 
   private prependWalletTransaction(title: string, amount: number, status: string, timestampSource = new Date().toISOString()) {
@@ -2931,7 +2729,9 @@ export class HomePage {
 
   private getApiErrorMessage(error: any, fallback: string) {
     if (error?.status === 0) {
-      return `Cannot reach API ${this.apiUrl}. Check mobile internet and reinstall the latest APK.`;
+      return Capacitor.isNativePlatform()
+        ? `Cannot reach API ${this.apiUrl}. Check mobile internet and reinstall the latest APK.`
+        : `Cannot reach API ${this.apiUrl}. Check that the local backend is running and refresh the page.`;
     }
 
     return error?.error?.error || error?.error?.message || error?.message || fallback;
@@ -4377,13 +4177,7 @@ export class HomePage {
   }
 
   private normalizedVehicleStatus(vehicle: Partial<ProfileVehicle>) {
-    const status = this.vehicleStatus(vehicle);
-    const hasMandatoryImages = Boolean(vehicle.rcDocumentUrl && vehicle.frontPhotoUrl && vehicle.backPhotoUrl);
-    if (status.toLowerCase() === 'verified' && !hasMandatoryImages) {
-      return 'reupload';
-    }
-
-    return status;
+    return normalizedVehicleStatusValue(vehicle);
   }
 
   private restoreRealtimeState() {
@@ -5082,6 +4876,8 @@ export class HomePage {
       return;
     }
 
+    this.rememberRecentSearch();
+
     const nearbyResults = this.buildNearbyRideResults();
     this.resultRides = nearbyResults;
 
@@ -5158,24 +4954,91 @@ export class HomePage {
     this.search.seats = Math.max(1, this.search.seats - 1);
   }
 
-  applyRecentSearch(recent: { from: string; to: string; date: string; passengers: number }) {
+  applyRecentSearch(recent: {
+    from: string;
+    to: string;
+    date: string;
+    dateValue?: string;
+    passengers: number;
+    fromLat?: number | null;
+    fromLng?: number | null;
+    toLat?: number | null;
+    toLng?: number | null;
+  }) {
     this.search = {
       from: recent.from,
       to: recent.to,
       date: recent.date,
-      dateValue: this.search.dateValue,
+      dateValue: recent.dateValue || this.search.dateValue,
       seats: recent.passengers,
-      fromLat: this.search.fromLat,
-      fromLng: this.search.fromLng,
-      toLat: this.search.toLat,
-      toLng: this.search.toLng,
+      fromLat: recent.fromLat ?? this.search.fromLat,
+      fromLng: recent.fromLng ?? this.search.fromLng,
+      toLat: recent.toLat ?? this.search.toLat,
+      toLng: recent.toLng ?? this.search.toLng,
     };
     this.searchRides();
   }
 
   clearRecentSearches() {
-    this.recentSearches = [];
-    this.presentToast('Recent searches cleared');
+    if (!this.auth.isAuthenticated || this.auth.token === 'demo-token') {
+      this.recentSearches = [];
+      this.presentToast('Recent searches cleared');
+      return;
+    }
+
+    this.api.clearRecentSearches().subscribe({
+      next: () => {
+        this.recentSearches = [];
+        this.presentToast('Recent searches cleared');
+      },
+      error: () => this.presentToast('Unable to clear recent searches'),
+    });
+  }
+
+  private rememberRecentSearch() {
+    const recentSearch = {
+      from: String(this.search.from || '').trim(),
+      to: String(this.search.to || '').trim(),
+      date: String(this.search.date || '').trim(),
+      dateValue: String(this.search.dateValue || '').trim(),
+      passengers: Math.max(1, Number(this.search.seats || 1)),
+      fromLat: this.search.fromLat ?? null,
+      fromLng: this.search.fromLng ?? null,
+      toLat: this.search.toLat ?? null,
+      toLng: this.search.toLng ?? null,
+    };
+
+    this.recentSearches = [
+      recentSearch,
+      ...this.recentSearches.filter((item) => !(
+        item.from.toLowerCase() === recentSearch.from.toLowerCase()
+        && item.to.toLowerCase() === recentSearch.to.toLowerCase()
+        && String(item.dateValue || item.date).toLowerCase() === String(recentSearch.dateValue || recentSearch.date).toLowerCase()
+        && Number(item.passengers || 1) === recentSearch.passengers
+      )),
+    ].slice(0, 3);
+
+    if (!this.auth.isAuthenticated || this.auth.token === 'demo-token') {
+      return;
+    }
+
+    this.api.saveRecentSearch(recentSearch).subscribe({
+      next: (response: any) => {
+        const data = Array.isArray(response.data) ? response.data : [];
+        this.recentSearches = data.map((item: any) => ({
+          from: item.from,
+          to: item.to,
+          date: item.date,
+          dateValue: item.date_value || '',
+          passengers: Number(item.passengers || 1),
+          fromLat: item.from_lat ?? null,
+          fromLng: item.from_lng ?? null,
+          toLat: item.to_lat ?? null,
+          toLng: item.to_lng ?? null,
+        }));
+      },
+      error: () => undefined,
+    });
   }
 
   private navLabel(tab: 'search' | 'publish' | 'yourRides' | 'inbox' | 'profile') {

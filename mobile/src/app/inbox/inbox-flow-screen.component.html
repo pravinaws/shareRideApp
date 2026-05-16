@@ -1,0 +1,78 @@
+<ng-container [ngSwitch]="vm.currentRoute">
+  <section *ngSwitchCase="'/chat'" class="screen-stack chat-screen">
+    <header class="app-header">
+      <button class="icon-button" type="button" (click)="vm.goTo('/inbox')" aria-label="Back">
+        <ion-icon name="arrow-back-outline"></ion-icon>
+      </button>
+      <img class="header-avatar" [src]="vm.selectedRide.photo" [alt]="vm.selectedRide.driver" />
+      <div>
+        <strong>{{ vm.selectedRide.driver }}</strong>
+        <span>Online - Bengaluru to Mysuru</span>
+      </div>
+      <button class="icon-button" type="button" aria-label="Ride details">
+        <ion-icon name="car-outline"></ion-icon>
+      </button>
+    </header>
+    <article class="ride-summary-strip">
+      <strong>Today - 08:30 AM</strong>
+      <span>Bengaluru Central to Mysuru Palace Road</span>
+    </article>
+    <div class="chat-message" *ngFor="let chat of vm.chats" [class.mine]="chat.from === 'me'">
+      <img class="chat-avatar" [src]="vm.chatAvatar(chat.from)" [alt]="chat.from === 'me' ? vm.profile.fullName : vm.selectedRide.driver" />
+      <article class="chat-bubble" [class.mine]="chat.from === 'me'">
+        <button class="delete-message" type="button" *ngIf="chat.from === 'me'" (click)="deleteChatMessage(chat.id)" aria-label="Delete message">
+          <ion-icon name="close-circle-outline"></ion-icon>
+        </button>
+        <img class="chat-image-preview" *ngIf="chat.attachmentType === 'image' && chat.previewUrl" [src]="chat.previewUrl" [alt]="chat.attachment || 'Shared image'" />
+        <span>{{ chat.text }}</span>
+        <b *ngIf="chat.attachment" class="attachment-pill">{{ chat.attachment }}</b>
+        <small>{{ chat.time }}</small>
+      </article>
+    </div>
+    <div class="typing-indicator" *ngIf="vm.remoteTypingUser"><span></span><span></span><span></span> {{ vm.remoteTypingUser }} is typing...</div>
+    <div class="typing-indicator mine" *ngIf="vm.isTyping"><span></span><span></span><span></span> Typing...</div>
+    <div class="attached-file" *ngIf="vm.attachedFileName">
+      <img *ngIf="vm.attachedFileType === 'image' && vm.attachedPreviewUrl" [src]="vm.attachedPreviewUrl" [alt]="vm.attachedFileName" />
+      <ion-icon *ngIf="vm.attachedFileType !== 'image'" name="document-attach-outline"></ion-icon>
+      <span>{{ vm.attachedFileName }}</span>
+      <button type="button" (click)="clearChatAttachment()" aria-label="Remove attachment">
+        <ion-icon name="close-circle-outline"></ion-icon>
+      </button>
+    </div>
+    <div class="chat-composer">
+      <label class="composer-attach" aria-label="Attach file">
+        <ion-icon name="add-circle-outline"></ion-icon>
+        <input type="file" (change)="attachChatFile($event)" />
+      </label>
+      <input placeholder="Message" aria-label="Message" [ngModel]="vm.chatDraft" (ngModelChange)="onChatDraftChange($event)" (keyup.enter)="sendChatMessage()" />
+      <button type="button" aria-label="Send message" (click)="sendChatMessage()">
+        <ion-icon name="chevron-forward-outline"></ion-icon>
+      </button>
+    </div>
+  </section>
+
+  <section *ngSwitchCase="'/inbox'" class="screen-stack">
+    <header class="app-header centered">
+      <span></span>
+      <strong>Inbox</strong>
+      <span></span>
+    </header>
+    <label class="search-field">
+      <ion-icon name="search-outline"></ion-icon>
+      <input placeholder="Search messages" aria-label="Search messages" />
+    </label>
+    <article class="conversation-card" *ngFor="let conversation of vm.conversations" (click)="openConversation(conversation)" [class.unread]="conversation.unread">
+      <img [src]="conversation.image" [alt]="conversation.name" />
+      <div>
+        <strong>{{ conversation.name }}</strong>
+        <span>{{ conversation.trip }}</span>
+        <p [class.bold-preview]="conversation.unread">{{ conversation.last }}</p>
+      </div>
+      <aside>
+        <small>{{ conversation.time }}</small>
+        <b *ngIf="conversation.unread">{{ conversation.unread }}</b>
+        <ion-icon *ngIf="conversation.seen" name="checkmark-circle-outline"></ion-icon>
+      </aside>
+    </article>
+  </section>
+</ng-container>

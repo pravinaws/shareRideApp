@@ -1,0 +1,16 @@
+<section class="screen-stack">
+  <header class="app-header centered">
+    <span></span>
+    <strong>Notifications</strong>
+    <span></span>
+  </header>
+  <article class="notification-item" *ngFor="let item of vm.notificationCenter" [class.unread]="item.unread" [class.actionable]="item.bookingDetails || item.action === 'same_route'" role="button" tabindex="0" (click)="vm.openNotification(item)" (keydown.enter)="vm.openNotification(item)">
+    <ion-icon [name]="item.icon"></ion-icon>
+    <div>
+      <small>{{ item.type }}</small>
+      <strong>{{ item.title }}</strong>
+      <span>{{ item.message }}</span>
+    </div>
+    <time>{{ item.time }}</time>
+  </article>
+</section>

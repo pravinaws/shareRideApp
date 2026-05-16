@@ -1,0 +1,51 @@
+<section class="screen-stack">
+  <header class="app-header centered">
+    <span></span>
+    <strong>Payments</strong>
+    <span></span>
+  </header>
+  <article class="payment-card primary-wallet">
+    <small>Ride wallet</small>
+    <strong>INR {{ vm.walletBalance | number: '1.0-0' }}</strong>
+    <span>Refunds and credits available instantly.</span>
+  </article>
+  <article class="minimal-card wallet-topup-card">
+    <div class="section-title compact"><h2>Add wallet balance</h2></div>
+    <div class="quick-amounts" role="group" aria-label="Quick wallet amounts">
+      <button type="button" *ngFor="let amount of vm.quickWalletAmounts" [class.active]="vm.walletTopUpAmount === amount" (click)="setWalletTopUpAmount(amount)">
+        INR {{ amount }}
+      </button>
+    </div>
+    <label class="form-row input-row">
+      <span>
+        <small>Top-up amount</small>
+        <input type="number" min="1" [(ngModel)]="vm.walletTopUpAmount" aria-label="Wallet top-up amount" />
+      </span>
+      <ion-icon name="wallet-outline"></ion-icon>
+    </label>
+    <div class="wallet-action-row">
+      <button class="primary-button" type="button" (click)="topUpWallet()" [disabled]="vm.walletProcessing">
+        {{ vm.walletProcessing ? 'Opening Razorpay...' : 'Add Money with Razorpay' }}
+      </button>
+      <button class="secondary-button withdraw-trigger-button" type="button" (click)="openWithdrawDialog()" [disabled]="vm.walletProcessing">
+        Withdraw Balance
+      </button>
+    </div>
+  </article>
+  <article class="minimal-card">
+    <div class="section-title compact"><h2>Transaction history</h2></div>
+    <div class="payment-history-list">
+      <article class="payment-history-row" *ngFor="let transaction of vm.transactions">
+        <div class="payment-history-main">
+          <strong>{{ transaction.title }}</strong>
+          <span>{{ transaction.timestamp }}</span>
+          <small>Transaction ID: {{ transaction.transactionId }}</small>
+        </div>
+        <div class="payment-history-side">
+          <b class="payment-status-flag" [ngClass]="vm.adminStatusClass(transaction.status)">{{ transaction.status }}</b>
+          <strong class="transaction-amount" [class.credit]="transaction.amountValue > 0">{{ transaction.amountLabel }}</strong>
+        </div>
+      </article>
+    </div>
+  </article>
+</section>

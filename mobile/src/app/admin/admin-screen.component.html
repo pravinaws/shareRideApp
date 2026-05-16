@@ -1,0 +1,359 @@
+<section class="screen-stack admin-screen">
+  <header class="app-header">
+    <button class="icon-button" type="button" (click)="vm.goTo('/settings')" aria-label="Back">
+      <ion-icon name="arrow-back-outline"></ion-icon>
+    </button>
+    <div>
+      <strong>Admin CRM</strong>
+      <span>Owners, passengers, verification, tours, money</span>
+    </div>
+    <button class="icon-button" type="button" (click)="vm.goTo('/notifications')" aria-label="Notifications">
+      <ion-icon name="notifications-outline"></ion-icon>
+    </button>
+  </header>
+
+  <section class="admin-kpi-grid admin-full-row">
+    <article class="admin-kpi" *ngFor="let kpi of vm.adminKpis" [ngClass]="kpi.tone">
+      <small>{{ kpi.label }}</small>
+      <strong>{{ kpi.value }}</strong>
+    </article>
+  </section>
+
+  <div class="admin-tabs admin-full-row" role="tablist" aria-label="Admin CRM sections">
+    <button type="button" *ngFor="let tab of vm.adminTabs" [class.active]="vm.activeAdminTab === tab.key" (click)="vm.setAdminTab(tab.key)">
+      {{ tab.label }}
+    </button>
+  </div>
+
+  <div class="admin-panel admin-full-row" [ngSwitch]="vm.activeAdminTab">
+    <section *ngSwitchCase="'overview'" class="admin-grid">
+      <article class="minimal-card admin-summary-card">
+        <div class="section-title compact"><h2>Security queue</h2></div>
+        <div class="summary-row"><span>ID pending</span><strong>{{ vm.pendingIdVerifications.length }}</strong></div>
+        <div class="summary-row"><span>Vehicle pending</span><strong>{{ vm.adminPendingVehicleCount }}</strong></div>
+        <div class="summary-row"><span>Warnings issued</span><strong>{{ vm.adminWarningsCount }}/2 policy</strong></div>
+      </article>
+      <article class="minimal-card admin-summary-card">
+        <div class="section-title compact"><h2>Operations</h2></div>
+        <div class="summary-row"><span>Passenger tours</span><strong>{{ vm.adminPassengerTourCount }}</strong></div>
+        <div class="summary-row"><span>Vehicle tours</span><strong>{{ vm.adminVehicleTourCount }}</strong></div>
+        <div class="summary-row"><span>Open transactions</span><strong>{{ vm.adminTransactions.length }}</strong></div>
+      </article>
+    </section>
+
+    <section *ngSwitchCase="'owners'" class="admin-list">
+      <article class="admin-user-card" *ngFor="let owner of vm.adminOwners">
+        <img [src]="owner.photo" [alt]="owner.name" />
+        <div>
+          <strong>{{ owner.name }}</strong>
+          <span>{{ owner.phone }} - {{ owner.rides }} rides</span>
+          <small>Balance INR {{ owner.balance | number: '1.0-0' }} - warnings {{ owner.warningCount }}/2</small>
+        </div>
+        <b [ngClass]="vm.adminStatusClass(owner.status)">{{ owner.status | titlecase }}</b>
+        <div class="admin-actions">
+          <button type="button" (click)="vm.viewAdminUserDetails(owner)">View Details</button>
+          <button type="button" (click)="vm.approveAdminUser(owner)">Verify</button>
+          <button type="button" (click)="vm.sendAdminWarning(owner)">Warn</button>
+          <button type="button" class="danger-link" (click)="vm.blockAdminUser(owner)">Block</button>
+        </div>
+      </article>
+    </section>
+
+    <section *ngSwitchCase="'passengers'" class="admin-list">
+      <article class="admin-user-card" *ngFor="let passenger of vm.adminPassengers">
+        <img [src]="passenger.photo" [alt]="passenger.name" />
+        <div>
+          <strong>{{ passenger.name }}</strong>
+          <span>{{ passenger.phone }} - {{ passenger.rides }} trips</span>
+          <small>Balance INR {{ passenger.balance | number: '1.0-0' }} - ID {{ passenger.verification }}</small>
+        </div>
+        <b [ngClass]="vm.adminStatusClass(passenger.status)">{{ passenger.status | titlecase }}</b>
+        <div class="admin-actions">
+          <button type="button" (click)="vm.viewAdminUserDetails(passenger)">View Details</button>
+          <button type="button" (click)="vm.approveAdminUser(passenger)">Verify ID</button>
+          <button type="button" (click)="vm.adjustAdminBalance(passenger, 100)">Credit</button>
+          <button type="button" class="danger-link" (click)="vm.blockAdminUser(passenger)">Block</button>
+        </div>
+      </article>
+    </section>
+
+    <section *ngSwitchCase="'verify'" class="admin-list">
+      <article class="admin-case-card" *ngFor="let user of vm.pendingIdVerifications">
+        <ion-icon name="shield-checkmark-outline"></ion-icon>
+        <div><strong>{{ user.name }}</strong><span>{{ user.role | titlecase }} ID verification pending</span></div>
+        <button type="button" (click)="vm.approveAdminUser(user)">Approve ID</button>
+      </article>
+      <article class="admin-case-card" *ngFor="let vehicle of vm.adminVehicleCases">
+        <ion-icon name="car-outline"></ion-icon>
+        <div>
+          <strong>{{ vehicle.vehicle }}</strong>
+          <span>{{ vehicle.owner }} - {{ vehicle.plate }} - {{ vehicle.documents }}</span>
+        </div>
+        <b [ngClass]="vm.adminStatusClass(vehicle.status)">{{ vehicle.status | titlecase }}</b>
+        <button type="button" class="secondary-mini" (click)="vm.viewAdminVehicleDetails(vehicle)">View</button>
+        <button type="button" (click)="vm.approveAdminVehicle(vehicle)">Approve</button>
+        <button type="button" class="secondary-mini" (click)="vm.requestVehicleReupload(vehicle)">Reupload</button>
+      </article>
+    </section>
+
+    <section *ngSwitchCase="'tours'" class="admin-list">
+      <article class="admin-tour-card" *ngFor="let tour of vm.adminTours">
+        <div>
+          <small>{{ tour.type }}</small>
+          <strong>{{ tour.route }}</strong>
+          <span>{{ tour.user }} - {{ tour.vehicle }}</span>
+        </div>
+        <b [ngClass]="vm.adminStatusClass(tour.status)">{{ tour.status }}</b>
+        <strong>INR {{ tour.amount | number: '1.0-0' }}</strong>
+        <button type="button" class="secondary-mini" (click)="vm.deleteAdminTour(tour)">Archive</button>
+      </article>
+    </section>
+
+    <section *ngSwitchCase="'money'" class="admin-list">
+      <article class="admin-section-head">
+        <div>
+          <strong>Wallet & transactions</strong>
+          <span>Admin, owner, and passenger wallet ledger with deposits, withdrawals, refunds, failed, and canceled entries.</span>
+        </div>
+        <b>{{ vm.adminWalletVisibleTransactions.length }} {{ vm.adminMoneyTabLabel }} entries</b>
+      </article>
+      <section class="admin-wallet-grid">
+        <article class="admin-wallet-stat">
+          <small>{{ vm.adminMoneyTabLabel }} net wallet</small>
+          <strong>INR {{ vm.adminVisibleWalletTotal | number: '1.0-0' }}</strong>
+          <span>Credits minus debits</span>
+        </article>
+        <article class="admin-wallet-stat">
+          <small>Total deposits</small>
+          <strong>INR {{ vm.adminVisibleWalletCredits | number: '1.0-0' }}</strong>
+          <span>Deposit, refund, payout credit</span>
+        </article>
+        <article class="admin-wallet-stat">
+          <small>Total withdrawals</small>
+          <strong>INR {{ vm.adminVisibleWalletDebits | number: '1.0-0' }}</strong>
+          <span>Withdraw, canceled, debit movement</span>
+        </article>
+      </section>
+      <nav class="admin-money-tabs" aria-label="Wallet transaction tabs">
+        <button type="button" *ngFor="let tab of vm.adminMoneyTabs" [class.active]="vm.adminMoneyTab === tab.key" (click)="vm.setAdminMoneyTab(tab.key)">
+          {{ tab.label }}
+        </button>
+      </nav>
+      <article class="minimal-card admin-form-card">
+        <div class="section-title compact inline">
+          <h2>Referral reward control</h2>
+          <b>INR {{ vm.adminReferralRewardAmount | number: '1.0-0' }}</b>
+        </div>
+        <div class="admin-form-grid">
+          <input type="number" min="0" [(ngModel)]="vm.adminReferralRewardAmount" aria-label="Referral reward amount" placeholder="Referral reward amount" />
+          <input [value]="vm.referralClaims.length + ' successful referral claims'" aria-label="Referral claim count" readonly />
+        </div>
+        <div class="dual-actions">
+          <button type="button" (click)="vm.saveAdminReferralSettings()">Save Reward</button>
+        </div>
+      </article>
+      <article class="admin-transaction-card wallet-card wallet-ledger-row" *ngFor="let transaction of vm.pagedAdminWalletTransactions">
+        <ion-icon name="wallet-outline"></ion-icon>
+        <div class="wallet-ledger-main">
+          <strong>{{ transaction.title }}</strong>
+          <span class="wallet-ledger-meta">{{ transaction.user }} / {{ transaction.role }} / {{ transaction.method }}</span>
+          <span>{{ transaction.user }} - {{ transaction.role }}</span>
+        </div>
+        <span class="wallet-type-pill">{{ transaction.type }}</span>
+        <b [ngClass]="vm.adminStatusClass(transaction.status)">{{ transaction.status }}</b>
+        <time class="wallet-ledger-date">{{ transaction.date }} / {{ transaction.time }}</time>
+        <small>{{ transaction.reference }}</small>
+        <strong class="transaction-amount" [class.credit]="transaction.amount > 0">{{ transaction.amount > 0 ? '+' : '' }}INR {{ transaction.amount | number: '1.0-0' }}</strong>
+      </article>
+      <div class="admin-pagination">
+        <button type="button" (click)="vm.changeAdminMoneyPage(-1)">Prev</button>
+        <span>{{ vm.adminMoneyPage }} / {{ vm.adminMoneyTotalPages }}</span>
+        <button type="button" (click)="vm.changeAdminMoneyPage(1)">Next</button>
+      </div>
+    </section>
+
+    <section *ngSwitchCase="'logs'" class="admin-list">
+      <article class="admin-section-head">
+        <div>
+          <strong>Security & activity logs</strong>
+          <span>Search, filter, and review passenger, owner, ride, security, and ads actions.</span>
+        </div>
+        <b>{{ vm.filteredAdminLogs.length }} logs</b>
+      </article>
+      <article class="minimal-card admin-filter-card">
+        <label class="search-field compact-search">
+          <ion-icon name="search-outline"></ion-icon>
+          <input [(ngModel)]="vm.adminLogSearch" placeholder="Search passenger, owner, ride, activity" aria-label="Search logs" />
+        </label>
+        <select [(ngModel)]="vm.adminLogType" aria-label="Activity type">
+          <option>All</option>
+          <option>Passenger</option>
+          <option>Owner</option>
+          <option>Ride</option>
+          <option>Security</option>
+          <option>Ads</option>
+        </select>
+      </article>
+      <article class="admin-log-card" *ngFor="let log of vm.pagedAdminLogs">
+        <ion-icon [name]="log.icon"></ion-icon>
+        <div>
+          <strong>{{ log.action }}</strong>
+          <span>{{ log.actor }} - {{ log.target }}</span>
+          <small>{{ log.type }} - {{ log.createdAt }}</small>
+        </div>
+        <b [ngClass]="vm.adminStatusClass(log.priority)">{{ log.priority }}</b>
+      </article>
+      <div class="admin-pagination">
+        <button type="button" (click)="vm.changeAdminLogPage(-1)">Prev</button>
+        <span>{{ vm.adminLogPage }} / {{ vm.adminLogTotalPages }}</span>
+        <button type="button" (click)="vm.changeAdminLogPage(1)">Next</button>
+      </div>
+    </section>
+
+    <section *ngSwitchCase="'ads'" class="admin-list">
+      <article class="minimal-card admin-form-card">
+        <div class="section-title compact"><h2>Ads Management</h2><p>Banner, script, HTML, iframe, and internal promotion ads.</p></div>
+        <div class="admin-form-grid">
+          <input [(ngModel)]="vm.adForm.name" placeholder="Ad name" aria-label="Ad name" />
+          <select [(ngModel)]="vm.adForm.type" aria-label="Ad type"><option>Banner</option><option>JavaScript</option><option>HTML Embed</option><option>iframe</option><option>Internal Promotion</option></select>
+          <select [(ngModel)]="vm.adForm.size" aria-label="Ad size"><option>300x250</option><option>320x50</option><option>320x100</option><option>320x180</option><option>300x600</option></select>
+          <select [(ngModel)]="vm.adForm.placement" aria-label="Placement"><option>Search Page</option><option>Publish Ride Page</option><option>Your Rides Page</option><option>Profile Page</option><option>Dashboard</option></select>
+          <input [(ngModel)]="vm.adForm.area" placeholder="Area/State/All India" aria-label="Area" />
+          <input [(ngModel)]="vm.adForm.redirectUrl" placeholder="Redirect URL or script label" aria-label="Redirect URL" />
+        </div>
+        <div class="dual-actions">
+          <button type="button" (click)="vm.createAdminAd()">Create Ad</button>
+          <button type="button" (click)="vm.bulkTogglePartnerAds()">Toggle Partner Ads</button>
+        </div>
+      </article>
+      <article class="admin-ad-card" *ngFor="let ad of vm.adminAds">
+        <div class="ad-preview-box" [ngClass]="ad.type.toLowerCase().replace(' ', '-')">{{ ad.size }}</div>
+        <div>
+          <strong>{{ ad.name }}</strong>
+          <span>{{ ad.type }} - {{ ad.placement }} - {{ ad.area }}</span>
+          <small>{{ ad.startDate }} to {{ ad.endDate }} - {{ ad.impressions }} views - {{ ad.clicks }} clicks - CTR {{ ad.ctr }}%</small>
+        </div>
+        <b [ngClass]="vm.adminStatusClass(ad.status)">{{ ad.status }}</b>
+        <div class="admin-actions inline-actions">
+          <button type="button" (click)="vm.toggleAdminAd(ad)">{{ ad.status === 'active' ? 'Disable' : 'Enable' }}</button>
+          <button type="button" (click)="vm.renewAdminAd(ad)">Renew</button>
+          <button type="button" class="danger-link" (click)="vm.deleteAdminAd(ad)">Delete</button>
+        </div>
+      </article>
+    </section>
+
+    <section *ngSwitchCase="'partners'" class="admin-list">
+      <article class="admin-section-head">
+        <div>
+          <strong>Ads partners</strong>
+          <span>Paid, free, script, and internal promotion partner CRM.</span>
+        </div>
+        <b>{{ vm.adPartners.length }} partners</b>
+      </article>
+      <section class="admin-wallet-grid partner-summary-grid">
+        <article class="admin-wallet-stat">
+          <small>Active partners</small>
+          <strong>{{ vm.activeAdPartners.length }}</strong>
+          <span>Ready for placement</span>
+        </article>
+        <article class="admin-wallet-stat">
+          <small>High priority</small>
+          <strong>{{ vm.highPriorityPartners.length }}</strong>
+          <span>Better visibility</span>
+        </article>
+      </section>
+      <article class="admin-partner-card" *ngFor="let partner of vm.adPartners">
+        <ion-icon name="person-circle-outline"></ion-icon>
+        <div>
+          <strong>{{ partner.partnerName }}</strong>
+          <span>{{ partner.companyName }}</span>
+          <div class="admin-mini-grid">
+            <small>{{ partner.type }}</small>
+            <small>{{ partner.priority }} priority</small>
+            <small>{{ partner.contactPerson }}</small>
+            <small>{{ partner.mobile }}</small>
+            <small>{{ partner.email }}</small>
+            <small>GST {{ partner.gstNumber }}</small>
+          </div>
+          <small>{{ partner.address }} - Agreement {{ partner.startDate }} to {{ partner.endDate }}</small>
+        </div>
+        <b [ngClass]="vm.adminStatusClass(partner.status)">{{ partner.status }}</b>
+      </article>
+    </section>
+
+    <section *ngSwitchCase="'billing'" class="admin-list">
+      <article class="admin-section-head">
+        <div>
+          <strong>Billing & invoices</strong>
+          <span>Ad invoice totals, GST, payment mode, and payment status.</span>
+        </div>
+        <b>INR {{ vm.pendingBillingAmount | number: '1.0-0' }} pending</b>
+      </article>
+      <section class="admin-wallet-grid billing-summary-grid">
+        <article class="admin-wallet-stat">
+          <small>Paid</small>
+          <strong>INR {{ vm.paidBillingAmount | number: '1.0-0' }}</strong>
+          <span>Settled invoices</span>
+        </article>
+        <article class="admin-wallet-stat">
+          <small>Pending</small>
+          <strong>INR {{ vm.pendingBillingAmount | number: '1.0-0' }}</strong>
+          <span>Awaiting payment</span>
+        </article>
+        <article class="admin-wallet-stat">
+          <small>Total GST</small>
+          <strong>INR {{ vm.totalBillingGst | number: '1.0-0' }}</strong>
+          <span>Tax collected</span>
+        </article>
+      </section>
+      <article class="admin-invoice-card" *ngFor="let invoice of vm.adInvoices">
+        <ion-icon name="card-outline"></ion-icon>
+        <div>
+          <strong>{{ invoice.invoiceNumber }}</strong>
+          <span>{{ invoice.partnerName }} - {{ invoice.adName }}</span>
+          <div class="admin-mini-grid">
+            <small>{{ invoice.placement }}</small>
+            <small>{{ invoice.runningDays }} days</small>
+            <small>Base INR {{ invoice.baseAmount | number: '1.0-0' }}</small>
+            <small>GST INR {{ invoice.gst | number: '1.0-0' }}</small>
+            <small>{{ invoice.paymentMode }}</small>
+            <small>{{ invoice.transactionRef }}</small>
+          </div>
+        </div>
+        <b [ngClass]="vm.adminStatusClass(invoice.paymentStatus)">{{ invoice.paymentStatus }}</b>
+        <strong>INR {{ invoice.finalAmount | number: '1.0-0' }}</strong>
+      </article>
+    </section>
+
+    <section *ngSwitchCase="'analytics'" class="admin-list">
+      <article class="admin-section-head">
+        <div>
+          <strong>Analytics & reports</strong>
+          <span>Revenue, active ads, ad history, and export-ready report data.</span>
+        </div>
+        <b>{{ vm.adminAdHistory.length }} history</b>
+      </article>
+      <section class="admin-kpi-grid">
+        <article class="admin-kpi"><small>Total revenue</small><strong>INR {{ vm.adminAdRevenue | number: '1.0-0' }}</strong></article>
+        <article class="admin-kpi"><small>Active ads</small><strong>{{ vm.activeAdminAds.length }}</strong></article>
+        <article class="admin-kpi"><small>Expired ads</small><strong>{{ vm.expiredAdminAds.length }}</strong></article>
+        <article class="admin-kpi"><small>Monthly revenue</small><strong>INR {{ vm.monthlyAdRevenue | number: '1.0-0' }}</strong></article>
+      </section>
+      <article class="admin-analytics-chart">
+        <div><span>Search Page</span><b style="--bar: 82%">82%</b></div>
+        <div><span>Dashboard</span><b style="--bar: 54%">54%</b></div>
+        <div><span>Profile Page</span><b style="--bar: 38%">38%</b></div>
+      </article>
+      <article class="admin-report-card">
+        <strong>Downloadable Excel report ready</strong>
+        <span>Ad ID, partner, contact, size, placement, area, dates, running days, impressions, clicks, CTR, billing, status, created/updated dates.</span>
+        <button type="button" (click)="vm.exportAdsReport()">Export CSV</button>
+      </article>
+      <article class="admin-log-card" *ngFor="let history of vm.adminAdHistory">
+        <ion-icon name="time-outline"></ion-icon>
+        <div><strong>{{ history.action }}</strong><span>{{ history.adName }} - {{ history.details }}</span><small>{{ history.createdAt }}</small></div>
+        <b>{{ history.adminUser }}</b>
+      </article>
+    </section>
+  </div>
+</section>

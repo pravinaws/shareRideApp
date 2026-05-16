@@ -1,0 +1,52 @@
+<ng-container [ngSwitch]="vm.currentRoute">
+  <section *ngSwitchCase="'/your-rides'" class="screen-stack">
+    <header class="app-header centered">
+      <span></span>
+      <strong>Ride management</strong>
+      <span></span>
+    </header>
+    <div class="segmented-tabs">
+      <button type="button" *ngFor="let tabName of vm.rideTabs" [class.active]="vm.activeRideTab === tabName" (click)="vm.setRideTab(tabName)">
+        {{ tabName }}
+      </button>
+    </div>
+    <ng-container *ngIf="vm.filteredManagedRides.length; else noManagedRides">
+      <article class="ride-card clickable-card" *ngFor="let ride of vm.filteredManagedRides" role="button" tabindex="0" (click)="vm.viewManagedRide(ride)" (keydown.enter)="vm.viewManagedRide(ride)">
+        <img [src]="ride.image" [alt]="ride.driver" />
+        <div class="ride-main">
+          <div class="ride-topline">
+            <strong>{{ ride.route }}</strong>
+            <span>{{ ride.price }}</span>
+          </div>
+          <p>{{ ride.date }} - {{ ride.time }} - {{ ride.driver }}</p>
+          <div class="ride-meta">
+            <span class="badge">{{ ride.status }}</span>
+            <span *ngIf="ride.tab === 'My Published Rides' && ride.seatsAvailable !== undefined">{{ ride.seatsAvailable }} of {{ ride.totalSeats }} seats left</span>
+          </div>
+          <div class="triple-actions" *ngIf="ride.tab === 'My Published Rides'">
+            <button type="button" (click)="vm.viewManagedRide(ride); $event.stopPropagation()">View Details</button>
+            <button type="button" (click)="vm.selectedBookingRequest = ride.bookingRequests?.[0] || null; $event.stopPropagation()" [disabled]="!(ride.bookingRequests?.length)">Booking Requests</button>
+            <button type="button" (click)="vm.startPublishRideFlow(); $event.stopPropagation()">Publish Again</button>
+          </div>
+          <div class="triple-actions" *ngIf="ride.tab !== 'Past' && ride.tab !== 'My Published Rides'">
+            <button type="button" (click)="vm.cancelManagedRide(); $event.stopPropagation()">Cancel Ride</button>
+            <button type="button" (click)="vm.viewManagedRide(ride); $event.stopPropagation()">View Details</button>
+            <button type="button" (click)="vm.rateRide(); $event.stopPropagation()">Rate Ride</button>
+          </div>
+          <div class="booking-request-preview" *ngIf="ride.tab === 'My Published Rides' && ride.bookingRequests?.length">
+            <strong>{{ ride.bookingRequests?.length }} booking request{{ ride.bookingRequests?.length === 1 ? '' : 's' }}</strong>
+            <button type="button" class="secondary-mini" (click)="vm.selectedBookingRequest = ride.bookingRequests?.[0] || null; $event.stopPropagation()">Review latest request</button>
+          </div>
+        </div>
+      </article>
+    </ng-container>
+    <ng-template #noManagedRides>
+      <article class="empty-state illustration">
+        <ion-icon name="car-outline"></ion-icon>
+        <strong>No rides found</strong>
+        <span>Your {{ vm.activeRideTab | lowercase }} rides will appear here.</span>
+        <button type="button" (click)="vm.startPublishRideFlow()">Publish a ride</button>
+      </article>
+    </ng-template>
+  </section>
+</ng-container>

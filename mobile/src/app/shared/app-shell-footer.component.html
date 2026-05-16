@@ -1,0 +1,28 @@
+<ion-footer class="flow-footer" *ngIf="vm.activeNav === 'publish' && vm.currentRoute !== '/login' && vm.currentRoute !== '/admin/login'">
+  <button type="button" *ngIf="vm.publishFlowStepFromRoute < 4" (click)="vm.continuePublish()">Continue</button>
+  <button type="button" *ngIf="vm.publishFlowStepFromRoute === 4" (click)="vm.publishRideNow()">Publish Ride</button>
+</ion-footer>
+
+<ion-footer class="app-tabbar" *ngIf="vm.currentRoute !== '/login' && vm.currentRoute !== '/admin/login'">
+  <button type="button" [class.active]="vm.activeNav === 'search'" (click)="vm.selectTab('search')">
+    <ion-icon name="search-outline"></ion-icon>
+    <span>Search</span>
+  </button>
+  <button type="button" [class.active]="vm.activeNav === 'publish'" (click)="vm.selectTab('publish')">
+    <ion-icon name="add-circle-outline"></ion-icon>
+    <span>Publish</span>
+  </button>
+  <button type="button" [class.active]="vm.activeNav === 'your-rides'" (click)="vm.selectTab('yourRides')">
+    <ion-icon name="car-outline"></ion-icon>
+    <span>Your Rides</span>
+  </button>
+  <button type="button" [class.active]="vm.activeNav === 'inbox'" (click)="vm.selectTab('inbox')">
+    <ion-icon name="chatbubble-ellipses-outline"></ion-icon>
+    <b class="nav-badge message-badge" *ngIf="vm.unreadMessageCount">{{ vm.unreadMessageCount }}</b>
+    <span>Inbox</span>
+  </button>
+  <button type="button" [class.active]="vm.activeNav === 'profile'" (click)="vm.selectTab('profile')">
+    <ion-icon name="person-circle-outline"></ion-icon>
+    <span>Profile</span>
+  </button>
+</ion-footer>

@@ -1,0 +1,81 @@
+<ng-container [ngSwitch]="vm.currentRoute">
+  <section *ngSwitchCase="'/settings'" class="screen-stack">
+    <header class="app-header centered">
+      <span></span>
+      <strong>Account settings</strong>
+      <span></span>
+    </header>
+    <article class="settings-list account-settings-list">
+      <button class="settings-row" type="button" *ngFor="let section of vm.accountSections" (click)="section.title === 'Dark mode' ? vm.toggleDarkMode() : vm.goTo(section.route)">
+        <span class="settings-icon"><ion-icon [name]="section.icon"></ion-icon></span>
+        <span class="settings-label">
+          {{ section.title }}
+          <small *ngIf="vm.accountSectionMeta(section).subtitle">{{ vm.accountSectionMeta(section).subtitle }}</small>
+        </span>
+        <b class="settings-status-badge" *ngIf="vm.accountSectionMeta(section).statusText" [ngClass]="vm.accountSectionMeta(section).statusTone">
+          {{ vm.accountSectionMeta(section).statusText }}
+        </b>
+        <ion-icon class="settings-chevron" name="chevron-forward-outline"></ion-icon>
+      </button>
+    </article>
+    <article class="settings-list danger-zone">
+      <button class="settings-row" type="button" (click)="vm.logout()">
+        <span class="settings-icon"><ion-icon name="arrow-back-outline"></ion-icon></span>
+        <span class="settings-label">Logout</span>
+        <ion-icon class="settings-chevron" name="chevron-forward-outline"></ion-icon>
+      </button>
+      <button class="settings-row" type="button">
+        <span class="settings-icon"><ion-icon name="close-circle-outline"></ion-icon></span>
+        <span class="settings-label">Close account</span>
+        <ion-icon class="settings-chevron" name="chevron-forward-outline"></ion-icon>
+      </button>
+    </article>
+  </section>
+
+  <section *ngSwitchCase="'/referral'" class="screen-stack">
+    <header class="app-header">
+      <button class="icon-button" type="button" (click)="vm.goTo('/settings')" aria-label="Back">
+        <ion-icon name="arrow-back-outline"></ion-icon>
+      </button>
+      <div>
+        <strong>Referral</strong>
+        <span>Invite friends and earn wallet credit</span>
+      </div>
+      <button class="icon-button" type="button" (click)="vm.shareReferralLink()" aria-label="Share referral link">
+        <ion-icon name="share-social-outline"></ion-icon>
+      </button>
+    </header>
+    <article class="minimal-card referral-card">
+      <div class="section-title compact">
+        <h2>Your referral code</h2>
+        <p>Share this code or send the signup link. When a new user signs up with it, both wallets get the admin-set reward.</p>
+      </div>
+      <div class="referral-code-panel">
+        <strong>{{ vm.currentReferralCode }}</strong>
+        <small>Reward per side: INR {{ vm.adminReferralRewardAmount | number: '1.0-0' }}</small>
+      </div>
+      <div class="referral-link-box">
+        <span>{{ vm.referralLink }}</span>
+      </div>
+      <div class="dual-actions">
+        <button type="button" (click)="vm.copyReferralCode()">Copy Code</button>
+        <button class="secondary-mini" type="button" (click)="vm.copyReferralLink()">Copy Link</button>
+        <button class="secondary-mini" type="button" (click)="vm.shareReferralLink()">Share</button>
+      </div>
+    </article>
+    <article class="minimal-card referral-card">
+      <div class="section-title compact inline">
+        <h2>Recent referrals</h2>
+        <b class="vehicle-status verified">{{ vm.referralClaims.length }}</b>
+      </div>
+      <div class="referral-claim-row" *ngFor="let claim of vm.referralClaims.slice(0, 4)">
+        <div>
+          <strong>{{ claim.referredName }}</strong>
+          <span>{{ claim.code }} - {{ claim.createdAt | date: 'dd MMM, hh:mm a' }}</span>
+        </div>
+        <small>INR {{ claim.reward | number: '1.0-0' }}</small>
+      </div>
+      <p class="body-copy" *ngIf="!vm.referralClaims.length">No referral activity yet.</p>
+    </article>
+  </section>
+</ng-container>

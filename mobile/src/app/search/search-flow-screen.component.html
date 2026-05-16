@@ -1,0 +1,327 @@
+<ng-container [ngSwitch]="vm.currentRoute">
+  <section *ngSwitchCase="'/search'" class="screen-stack search-screen">
+    <header class="app-header search-header">
+      <strong>RideShare</strong>
+      <button
+        class="icon-button notification-button"
+        type="button"
+        (click)="vm.goTo('/notifications')"
+        aria-label="Open notifications"
+      >
+        <ion-icon name="notifications-outline"></ion-icon>
+        <b class="nav-badge" *ngIf="vm.unreadCount">{{ vm.unreadCount }}</b>
+      </button>
+    </header>
+
+    <article class="minimal-card search-card">
+      <div class="form-row input-row location-field" [class.open]="vm.activeLocationField === 'from'">
+        <span>
+          <small>Leaving From</small>
+          <input
+            [(ngModel)]="vm.search.from"
+            (focus)="vm.onLocationFocus('from')"
+            (input)="vm.onLocationInput('from')"
+            (blur)="vm.closeLocationDropdown('from')"
+            aria-label="Leaving From"
+            autocomplete="off"
+          />
+        </span>
+        <ion-icon name="location-outline"></ion-icon>
+        <div class="location-dropdown" *ngIf="vm.activeLocationField === 'from'">
+          <div class="location-state" *ngIf="vm.locationLoading.from">Searching map locations...</div>
+          <button
+            class="location-option"
+            type="button"
+            *ngFor="let location of vm.locationSuggestions.from"
+            (mousedown)="vm.selectLocation('from', location)"
+          >
+            <ion-icon
+              [name]="location.source === 'map' || location.source === 'typed' ? 'map-outline' : 'time-outline'"
+            ></ion-icon>
+            <span>
+              <strong>{{ location.title }}</strong>
+              <small>{{ location.subtitle }}</small>
+            </span>
+          </button>
+          <div class="location-state muted" *ngIf="vm.locationError.from">{{ vm.locationError.from }}</div>
+        </div>
+      </div>
+      <div class="form-row input-row location-field" [class.open]="vm.activeLocationField === 'to'">
+        <span>
+          <small>Going To</small>
+          <input
+            [(ngModel)]="vm.search.to"
+            (focus)="vm.onLocationFocus('to')"
+            (input)="vm.onLocationInput('to')"
+            (blur)="vm.closeLocationDropdown('to')"
+            aria-label="Going To"
+            autocomplete="off"
+          />
+        </span>
+        <ion-icon name="flag-outline"></ion-icon>
+        <div class="location-dropdown" *ngIf="vm.activeLocationField === 'to'">
+          <div class="location-state" *ngIf="vm.locationLoading.to">Searching map locations...</div>
+          <button
+            class="location-option"
+            type="button"
+            *ngFor="let location of vm.locationSuggestions.to"
+            (mousedown)="vm.selectLocation('to', location)"
+          >
+            <ion-icon
+              [name]="location.source === 'map' || location.source === 'typed' ? 'map-outline' : 'time-outline'"
+            ></ion-icon>
+            <span>
+              <strong>{{ location.title }}</strong>
+              <small>{{ location.subtitle }}</small>
+            </span>
+          </button>
+          <div class="location-state muted" *ngIf="vm.locationError.to">{{ vm.locationError.to }}</div>
+        </div>
+      </div>
+      <button class="form-row input-row date-row" type="button" (click)="vm.openSearchDatePicker()">
+        <span>
+          <small>Date selector</small>
+          <strong>{{ vm.search.date }}</strong>
+        </span>
+        <ion-icon name="calendar-outline"></ion-icon>
+      </button>
+      <ion-modal
+        class="date-picker-modal"
+        [isOpen]="vm.datePickerOpen"
+        [breakpoints]="[0, 0.78, 0.95]"
+        [initialBreakpoint]="0.78"
+        (didDismiss)="vm.datePickerOpen = false"
+      >
+        <ng-template>
+          <div class="date-picker-content">
+            <ion-datetime
+              [value]="vm.search.dateValue"
+              [min]="vm.minSearchDate"
+              presentation="date"
+              [showDefaultButtons]="true"
+              doneText="Select"
+              cancelText="Cancel"
+              (ionChange)="vm.onSearchDateChange($event); vm.datePickerOpen = false"
+              (ionCancel)="vm.datePickerOpen = false"
+            ></ion-datetime>
+          </div>
+        </ng-template>
+      </ion-modal>
+      <div class="form-row seat-row passenger-count-row">
+        <div class="passenger-copy">
+          <small>Passenger count</small>
+        </div>
+        <div class="stepper passenger-stepper">
+          <button type="button" (click)="vm.decreasePassengers()" aria-label="Decrease passengers">
+            <ion-icon name="remove-outline"></ion-icon>
+          </button>
+          <strong aria-live="polite">{{ vm.search.seats }}</strong>
+          <button type="button" (click)="vm.increasePassengers()" aria-label="Increase passengers">
+            <ion-icon name="add-outline"></ion-icon>
+          </button>
+        </div>
+      </div>
+      <button class="primary-button" type="button" (click)="vm.searchRides()">Search Rides</button>
+    </article>
+
+    <section>
+      <div class="section-title inline">
+        <h2>Recent searches</h2>
+        <button type="button" (click)="vm.clearRecentSearches()">Clear</button>
+      </div>
+      <div class="history-grid" *ngIf="vm.recentSearches.length; else emptyRecent">
+        <button class="history-card" type="button" *ngFor="let recent of vm.recentSearches" (click)="vm.applyRecentSearch(recent)">
+          <ion-icon name="time-outline"></ion-icon>
+          <span>{{ recent.from }} to {{ recent.to }}</span>
+          <small>{{ recent.date }} - {{ recent.passengers }} passengers</small>
+        </button>
+      </div>
+      <ng-template #emptyRecent>
+        <article class="empty-state">
+          <ion-icon name="search-outline"></ion-icon>
+          <strong>No recent searches</strong>
+          <span>Your route history will appear here.</span>
+        </article>
+      </ng-template>
+    </section>
+
+    <section>
+      <div class="section-title inline">
+        <h2>Sponsored</h2>
+      </div>
+      <div class="ad-row">
+        <article class="ad-card" *ngFor="let ad of vm.sponsoredAds" [class.alt]="ad.variant === 'alt'">
+          <small>{{ ad.label }}</small>
+          <strong>{{ ad.title }}</strong>
+          <span>{{ ad.body }}</span>
+        </article>
+      </div>
+    </section>
+  </section>
+
+  <section *ngSwitchCase="'/results'" class="screen-stack results-screen">
+    <header class="app-header results-header">
+      <button class="icon-button" type="button" (click)="vm.goBackToSearch()" aria-label="Back">
+        <ion-icon name="arrow-back-outline"></ion-icon>
+      </button>
+      <div>
+        <strong>{{ vm.search.from }} to {{ vm.search.to }}</strong>
+        <span>{{ vm.search.date }} - {{ vm.search.seats }} passengers</span>
+      </div>
+      <button class="icon-button" type="button" (click)="vm.toggleFilterDropdown()" aria-label="Filters">
+        <ion-icon name="funnel-outline"></ion-icon>
+      </button>
+      <div class="filter-dropdown" *ngIf="vm.filterDropdownOpen">
+        <div class="chip-group result-filters">
+          <button type="button" *ngFor="let filter of vm.filters" [class.active]="filter.active" (click)="vm.toggleFilter(filter)">
+            {{ filter.label }}
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <article class="ride-card" *ngFor="let ride of vm.resultRides" [class.full-booked]="ride.status === 'Full booked'">
+      <img [src]="ride.photo" [alt]="ride.driver" />
+      <div class="ride-main">
+        <div class="ride-topline">
+          <strong>{{ ride.driver }}</strong>
+          <span>{{ ride.price }}</span>
+        </div>
+        <p>{{ ride.departure }} -> {{ ride.arrival }} - {{ ride.route }}</p>
+        <div class="ride-meta">
+          <span>Rating {{ ride.rating }}</span>
+          <span>{{ ride.seats }} of {{ ride.totalSeats }} seats left</span>
+          <span class="badge" [class.full]="ride.status === 'Full booked'">{{ ride.status }}</span>
+          <span *ngIf="ride.instant" class="badge">Instant</span>
+        </div>
+        <div class="dual-actions result-actions">
+          <button type="button" (click)="vm.viewRide(ride)">View Ride</button>
+          <button type="button" [disabled]="ride.seats < 1" (click)="vm.bookSeat(ride)">
+            {{ ride.seats < 1 ? 'Full Booked' : 'Book Seat' }}
+          </button>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section *ngSwitchCase="'/ride-details'" class="screen-stack ride-details-screen">
+    <header class="app-header">
+      <button class="icon-button" type="button" (click)="vm.goTo(vm.rideDetailsBackRoute)" aria-label="Back">
+        <ion-icon name="arrow-back-outline"></ion-icon>
+      </button>
+      <div>
+        <strong>Ride details</strong>
+        <span>{{ vm.selectedRide.route }}</span>
+      </div>
+      <button class="icon-button" type="button" (click)="vm.messageDriver()" aria-label="Message driver">
+        <ion-icon name="chatbubble-ellipses-outline"></ion-icon>
+      </button>
+    </header>
+
+    <article class="minimal-card past-rating-card" *ngIf="vm.currentRideIsPast">
+      <div class="section-title compact">
+        <h2>Leave rating for owner</h2>
+        <p>Past rides are view-only. You can still share feedback.</p>
+      </div>
+      <div class="rating-stars" role="radiogroup" aria-label="Owner rating">
+        <button type="button" *ngFor="let star of [1,2,3,4,5]" [class.active]="vm.pastRideRating >= star" (click)="vm.setPastRideRating(star)">
+          <ion-icon name="star-outline"></ion-icon>
+        </button>
+      </div>
+      <label class="feedback-box">
+        <span>Feedback</span>
+        <textarea [(ngModel)]="vm.pastRideFeedback" rows="3" placeholder="Share your experience"></textarea>
+      </label>
+      <button class="primary-button small-cta" type="button" (click)="vm.submitPastRideRating()">Submit Rating</button>
+    </article>
+
+    <article class="map-preview route-map-card" *ngIf="!vm.currentRideIsPast">
+      <iframe [src]="vm.mapEmbedUrl" title="Route map preview"></iframe>
+      <div class="live-location-card">
+        <ion-icon name="location-outline"></ion-icon>
+        <span>
+          <small>Live location</small>
+          <strong>{{ vm.selectedRide.liveLocation }}</strong>
+          <em>{{ vm.selectedRide.liveStatus }} - {{ vm.selectedRide.lastLocationUpdate }}</em>
+        </span>
+        <a class="map-icon-link" [href]="vm.mapFallbackUrl" target="_blank" rel="noopener" aria-label="Open map">
+          <ion-icon name="map-outline"></ion-icon>
+        </a>
+      </div>
+      <div class="route-fit-row">
+        <span>{{ vm.selectedRide.pickup }}</span>
+        <ion-icon name="map-outline"></ion-icon>
+        <span>{{ vm.selectedRide.drop }}</span>
+        <strong>{{ vm.selectedRide.duration }}</strong>
+      </div>
+    </article>
+
+    <article class="minimal-card driver-card owner-mini-card" *ngIf="!vm.currentRideIsPast" role="button" tabindex="0" (click)="vm.openOwnerProfile()" (keydown.enter)="vm.openOwnerProfile()">
+      <img [src]="vm.selectedRide.photo" [alt]="vm.selectedRide.driver" />
+      <div>
+        <strong>{{ vm.selectedRide.driver }}</strong>
+        <span>Rating {{ vm.selectedRide.rating }} - {{ vm.selectedRide.trips }} trips</span>
+        <small>Verified driver - tap to view profile</small>
+      </div>
+    </article>
+
+    <article class="minimal-card confirmation-card">
+      <div class="summary-row"><span>Source</span><strong>{{ vm.selectedRide.pickup }}</strong></div>
+      <div class="summary-row"><span>Destination</span><strong>{{ vm.selectedRide.drop }}</strong></div>
+      <div class="summary-row"><span>Timing</span><strong>{{ vm.selectedRide.departure }} -> {{ vm.selectedRide.arrival }} - {{ vm.selectedRide.duration }}</strong></div>
+      <div class="summary-row"><span>Available seats</span><strong>{{ vm.selectedRide.seats }} of {{ vm.selectedRide.totalSeats }} - {{ vm.selectedRide.status }}</strong></div>
+    </article>
+
+    <article class="minimal-card confirmed-vehicle-card compact-vehicle-card clickable-card" *ngIf="!vm.currentRideIsPast" role="button" tabindex="0" (click)="vm.openOwnerProfile()" (keydown.enter)="vm.openOwnerProfile()">
+      <div class="section-title compact">
+        <h2>Confirmed ride vehicle</h2>
+      </div>
+      <div>
+        <strong>{{ vm.driverPublicProfile.vehicle }}</strong>
+        <span>{{ vm.driverPublicProfile.vehicleMeta }}</span>
+        <small>{{ vm.selectedRide.passengers.length }} of {{ vm.selectedRide.totalSeats }} confirmed passengers</small>
+      </div>
+    </article>
+
+    <article class="minimal-card" *ngIf="!vm.currentRideIsPast">
+      <div class="section-title compact">
+        <h2>Passenger profiles</h2>
+      </div>
+      <div class="passenger-profile-list" *ngIf="vm.confirmedPassengerProfiles.length; else noPassengerProfilesTpl">
+        <article class="passenger-profile-card compact-passenger-card" *ngFor="let passenger of vm.confirmedPassengerProfiles" role="button" tabindex="0" (click)="vm.openPassengerProfile(passenger)" (keydown.enter)="vm.openPassengerProfile(passenger)">
+          <img [src]="passenger.photo" [alt]="passenger.name" />
+          <div>
+            <strong>{{ passenger.name }}</strong>
+            <small>{{ passenger.verified ? 'Verified passenger' : 'Verification pending' }}</small>
+            <div class="profile-chip-row compact single-row">
+              <span *ngFor="let mood of passenger.moods">{{ mood }}</span>
+            </div>
+          </div>
+        </article>
+      </div>
+      <ng-template #noPassengerProfilesTpl>
+        <div class="empty-inline">No confirmed passengers yet</div>
+      </ng-template>
+    </article>
+
+    <article class="minimal-card" *ngIf="!vm.currentRideIsPast">
+      <div class="section-title compact">
+        <h2>Ride preferences</h2>
+      </div>
+      <div class="preference-grid">
+        <span *ngFor="let preference of vm.ridePreferences">{{ preference.label }} - {{ preference.value }}</span>
+      </div>
+      <div class="ride-preference-actions">
+        <button type="button" class="secondary-mini" (click)="vm.goTo(vm.rideDetailsBackRoute)">Back</button>
+        <button type="button" [disabled]="vm.selectedRide.seats < 1" (click)="vm.confirmBooking()">
+          {{ vm.selectedRide.seats < 1 ? 'Full booked' : 'Confirm' }}
+        </button>
+      </div>
+    </article>
+
+    <div class="sticky-summary" *ngIf="!vm.currentRideIsPast">
+      <span>INR {{ vm.selectedRide.priceValue + vm.selectedRide.serviceFee }}</span>
+      <small>Final fare including service fee</small>
+    </div>
+  </section>
+</ng-container>

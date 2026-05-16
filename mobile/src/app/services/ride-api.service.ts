@@ -15,6 +15,19 @@ interface ApiList<T> {
   };
 }
 
+interface ApiRecentSearch {
+  recent_search_id: number;
+  from: string;
+  to: string;
+  date: string;
+  date_value?: string;
+  passengers: number;
+  from_lat?: number | null;
+  from_lng?: number | null;
+  to_lat?: number | null;
+  to_lng?: number | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class RideApiService {
   private readonly apiUrl = environment.apiUrl;
@@ -95,6 +108,18 @@ export class RideApiService {
 
   getPayments() {
     return this.http.get<ApiList<unknown>>(`${this.apiUrl}/payments`);
+  }
+
+  getRecentSearches() {
+    return this.http.get<{ ok: boolean; data: ApiRecentSearch[] }>(`${this.apiUrl}/searches/recent`);
+  }
+
+  saveRecentSearch(payload: unknown) {
+    return this.http.post<{ ok: boolean; data: ApiRecentSearch[] }>(`${this.apiUrl}/searches/recent`, payload);
+  }
+
+  clearRecentSearches() {
+    return this.http.delete<{ ok: boolean }>(`${this.apiUrl}/searches/recent`);
   }
 
   createPayment(payload: unknown) {

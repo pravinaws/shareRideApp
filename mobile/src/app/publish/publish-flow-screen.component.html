@@ -1,0 +1,211 @@
+<ng-container [ngSwitch]="vm.currentRoute">
+  <section *ngSwitchCase="'/publish'" class="screen-stack">
+    <ng-container *ngTemplateOutlet="publishStepTwo"></ng-container>
+  </section>
+
+  <section *ngSwitchCase="'/publish/preferences'" class="screen-stack">
+    <ng-container *ngTemplateOutlet="publishStepThree"></ng-container>
+  </section>
+
+  <section *ngSwitchCase="'/publish/confirm'" class="screen-stack">
+    <ng-container *ngTemplateOutlet="publishStepFour"></ng-container>
+  </section>
+</ng-container>
+
+<ng-template #publishHeader>
+  <header class="app-header centered">
+    <button class="icon-button" type="button" (click)="vm.previousPublishStep()" aria-label="Back">
+      <ion-icon name="arrow-back-outline"></ion-icon>
+    </button>
+    <div>
+      <strong>Publish ride</strong>
+      <span>Step {{ vm.publishFlowUiStep }} of 3</span>
+    </div>
+    <button class="icon-button" type="button" aria-label="Options">
+      <ion-icon name="options-outline"></ion-icon>
+    </button>
+  </header>
+
+  <section class="progress-card publish-progress-card">
+    <div class="progress-label">
+      <span>{{ vm.publishFlowTitle }}</span>
+      <strong>{{ vm.publishFlowUiStep }}/3</strong>
+    </div>
+    <div class="progress-track">
+      <span [style.width.%]="vm.publishProgressPercent"></span>
+    </div>
+    <p>{{ vm.publishFlowHint }}</p>
+  </section>
+
+  <section class="route-card publish-route-card">
+    <div class="route-card-copy">
+      <small>Trip preview</small>
+      <strong>{{ vm.publishRideForm.departure || 'Choose your source' }} to {{ vm.publishRideForm.destination || 'Choose your destination' }}</strong>
+      <span>{{ vm.selectedPublishVehicle ? vm.selectedPublishVehicle.make + ' ' + vm.selectedPublishVehicle.model : 'Verified vehicle required' }} - {{ vm.publishRideForm.allowedPassengers }} seats</span>
+    </div>
+    <div class="route-card-badges">
+      <b>{{ vm.selectedPublishVehicle ? 'Ready' : 'Vehicle needed' }}</b>
+      <span *ngIf="vm.publishRideForm.backpackAllowed || vm.publishRideForm.bigTrolleyAllowed">{{ vm.publishRideForm.backpackAllowed ? 'Backpack' : 'No backpack' }} - {{ vm.publishRideForm.bigTrolleyAllowed ? 'Trolley' : 'No trolley' }}</span>
+    </div>
+  </section>
+</ng-template>
+
+<ng-template #publishStepTwo>
+  <ng-container *ngTemplateOutlet="publishHeader"></ng-container>
+  <article class="minimal-card publish-card">
+    <div class="section-title">
+      <h1>Let's set up your ride</h1>
+      <p>Pick one verified vehicle and fill only the details passengers need to see.</p>
+    </div>
+    <section class="publish-block">
+      <div class="publish-block-head">
+        <div>
+          <small>Step 1</small>
+          <strong>Select a verified vehicle</strong>
+        </div>
+        <span>{{ vm.verifiedPublishVehicles.length }} ready</span>
+      </div>
+      <div class="publish-vehicle-grid">
+        <button
+          type="button"
+          class="publish-vehicle-option"
+          *ngFor="let vehicle of vm.verifiedPublishVehicles"
+          [class.active]="vm.selectedPublishVehicle?.vehicleId === vehicle.vehicleId"
+          (click)="vm.selectPublishVehicle(vehicle)"
+        >
+          <div class="publish-vehicle-meta">
+            <strong>{{ vehicle.make }} {{ vehicle.model }}</strong>
+            <span>{{ vehicle.color }} - {{ vehicle.plateNumber }}</span>
+          </div>
+          <small>Verified vehicle</small>
+        </button>
+      </div>
+      <div class="publish-info-banner" *ngIf="vm.hasPendingPublishVehicles">
+        <ion-icon name="time-outline"></ion-icon>
+        <span>Vehicles under verification will appear here after approval. Verification usually takes 10 to 15 minutes.</span>
+      </div>
+    </section>
+
+    <section class="publish-block">
+      <div class="publish-block-head">
+        <div>
+          <small>Step 2</small>
+          <strong>Route details</strong>
+        </div>
+      </div>
+      <label class="form-row input-row publish-input-row">
+        <span>
+          <small>Source location</small>
+          <input [(ngModel)]="vm.publishRideForm.departure" aria-label="Source location" placeholder="Enter pickup point" />
+        </span>
+        <button type="button" class="secondary-mini" (click)="vm.useCurrentLocationForPublish()">Current</button>
+      </label>
+      <label class="form-row input-row publish-input-row">
+        <span>
+          <small>Destination location</small>
+          <input [(ngModel)]="vm.publishRideForm.destination" aria-label="Destination location" placeholder="Enter drop location" />
+        </span>
+        <ion-icon name="location-outline"></ion-icon>
+      </label>
+    </section>
+
+    <section class="publish-block">
+      <div class="publish-block-head">
+        <div>
+          <small>Step 3</small>
+          <strong>Seats and luggage</strong>
+        </div>
+      </div>
+      <div class="form-row seat-row publish-seat-row">
+        <div>
+          <small>Allowed passengers</small>
+          <strong>{{ vm.publishRideForm.allowedPassengers }}</strong>
+          <span>Choose how many passengers can book this ride.</span>
+        </div>
+        <div class="stepper">
+          <button type="button" (click)="vm.decreaseSeats()" aria-label="Decrease passengers"><ion-icon name="remove-outline"></ion-icon></button>
+          <button type="button" (click)="vm.increaseSeats()" aria-label="Increase passengers"><ion-icon name="add-outline"></ion-icon></button>
+        </div>
+      </div>
+      <div class="publish-toggle-group">
+        <div class="toggle-row">
+          <div><strong>Backpack allowed</strong><span>Passengers can carry a small backpack.</span></div>
+          <ion-toggle [(ngModel)]="vm.publishRideForm.backpackAllowed" aria-label="Backpack allowed"></ion-toggle>
+        </div>
+        <div class="toggle-row">
+          <div><strong>Big trolley allowed</strong><span>Allow larger trolley luggage for this ride.</span></div>
+          <ion-toggle [(ngModel)]="vm.publishRideForm.bigTrolleyAllowed" aria-label="Big trolley allowed"></ion-toggle>
+        </div>
+      </div>
+    </section>
+  </article>
+</ng-template>
+
+<ng-template #publishStepThree>
+  <ng-container *ngTemplateOutlet="publishHeader"></ng-container>
+  <article class="minimal-card publish-card">
+    <div class="section-title">
+      <h1>Set your ride style</h1>
+      <p>These details help passengers decide quickly if your ride suits them.</p>
+    </div>
+    <section class="publish-block">
+      <div class="publish-block-head">
+        <div>
+          <small>Comfort preferences</small>
+          <strong>Travel rules</strong>
+        </div>
+      </div>
+      <div class="publish-toggle-group">
+        <div class="toggle-row">
+          <div><strong>Smoking allowed</strong><span>Allow smoking during stops or ride.</span></div>
+          <ion-toggle [(ngModel)]="vm.travelPreferences.smokingAllowed" aria-label="Smoking allowed"></ion-toggle>
+        </div>
+        <div class="toggle-row">
+          <div><strong>Pets allowed</strong><span>Accept passengers travelling with pets.</span></div>
+          <ion-toggle [(ngModel)]="vm.travelPreferences.petsAllowed" aria-label="Pets allowed"></ion-toggle>
+        </div>
+      </div>
+    </section>
+  </article>
+  <article class="minimal-card publish-card">
+    <div class="section-title compact"><h2>Music preference</h2></div>
+    <div class="chip-group">
+      <button type="button" *ngFor="let option of vm.musicOptions" [class.active]="vm.travelPreferences.music === option" (click)="vm.selectMusic(option)">
+        {{ option }}
+      </button>
+    </div>
+  </article>
+  <article class="minimal-card publish-card">
+    <div class="section-title compact"><h2>Chat preference</h2></div>
+    <div class="chip-group">
+      <button type="button" *ngFor="let option of vm.chatOptions" [class.active]="vm.travelPreferences.chat === option" (click)="vm.selectChat(option)">
+        {{ option }}
+      </button>
+    </div>
+  </article>
+</ng-template>
+
+<ng-template #publishStepFour>
+  <ng-container *ngTemplateOutlet="publishHeader"></ng-container>
+  <article class="minimal-card confirmation-card publish-card publish-confirm-card">
+    <div class="section-title">
+      <h1>Review before you go live</h1>
+      <p>Passengers will see this summary when they search for matching rides.</p>
+    </div>
+    <div class="publish-summary-hero">
+      <strong>{{ vm.publishRideForm.departure || 'Source location' }}</strong>
+      <ion-icon name="arrow-down-outline"></ion-icon>
+      <strong>{{ vm.publishRideForm.destination || 'Destination location' }}</strong>
+      <span>{{ vm.selectedPublishVehicle ? vm.selectedPublishVehicle.make + ' ' + vm.selectedPublishVehicle.model : 'Verified vehicle required' }} - {{ vm.publishRideForm.allowedPassengers }} seats</span>
+    </div>
+    <div class="summary-row"><span>Vehicle</span><strong>{{ vm.selectedPublishVehicle ? vm.selectedPublishVehicle.make + ' ' + vm.selectedPublishVehicle.model + ' - ' + vm.selectedPublishVehicle.plateNumber : 'Verified vehicle required' }}</strong></div>
+    <div class="summary-row"><span>Fare</span><strong>INR {{ vm.rideSetup.pricePerSeat }} per seat</strong></div>
+    <div class="summary-row"><span>Passengers</span><strong>{{ vm.publishRideForm.allowedPassengers }} available</strong></div>
+    <div class="summary-row"><span>Music and chat</span><strong>{{ vm.travelPreferences.music }} - {{ vm.travelPreferences.chat }}</strong></div>
+    <div class="summary-row"><span>Comfort</span><strong>{{ vm.travelPreferences.smokingAllowed ? 'Smoking allowed' : 'No smoking' }}, {{ vm.travelPreferences.petsAllowed ? 'pets allowed' : 'no pets' }}</strong></div>
+    <div class="summary-row">
+      <span>Luggage rules</span>
+      <strong>{{ vm.publishRideForm.backpackAllowed ? 'Backpack allowed' : 'No backpack' }}, {{ vm.publishRideForm.bigTrolleyAllowed ? 'big trolley allowed' : 'no big trolley' }}</strong>
+    </div>
+  </article>
+</ng-template>

@@ -126,6 +126,7 @@ const initialStore = {
       created_at: now(),
     },
   ],
+  recent_searches: [],
   payments: [],
   admin_activity_logs: [
     {
@@ -232,7 +233,12 @@ export const store = loadStore();
 function loadStore() {
   try {
     if (fs.existsSync(storePath)) {
-      return JSON.parse(fs.readFileSync(storePath, 'utf8'));
+      const loadedStore = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+      return {
+        ...initialStore,
+        ...loadedStore,
+        recent_searches: Array.isArray(loadedStore?.recent_searches) ? loadedStore.recent_searches : [],
+      };
     }
   } catch (error) {
     console.error(`Store load failed: ${error.message}`);

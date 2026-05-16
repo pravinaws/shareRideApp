@@ -1,0 +1,339 @@
+<ng-container [ngSwitch]="vm.currentRoute">
+  <section *ngSwitchCase="'/profile'" class="screen-stack profile-screen">
+    <header class="app-header profile-simple-header">
+      <span></span>
+      <strong>Profile</strong>
+      <button class="icon-button profile-settings-button" type="button" (click)="vm.goTo('/settings')" aria-label="Edit profile settings">
+        <ion-icon name="settings-outline"></ion-icon>
+      </button>
+    </header>
+    <article class="minimal-card profile-summary">
+      <label class="profile-avatar-upload" aria-label="Upload profile photo">
+        <img class="profile-avatar" [src]="vm.currentUserAvatar" alt="Profile photo" />
+        <input type="file" accept="image/*" (change)="vm.updateProfilePhoto($event)" />
+        <span><ion-icon name="camera-outline"></ion-icon></span>
+      </label>
+      <div>
+        <div class="profile-name-row">
+          <h1>{{ vm.profile.fullName }}</h1>
+          <button class="profile-wallet-chip" type="button" (click)="vm.goTo('/payments')" aria-label="Open wallet balance">
+            <ion-icon name="wallet-outline"></ion-icon>
+            <span>INR {{ vm.walletBalance | number: '1.0-0' }}</span>
+          </button>
+        </div>
+        <p>{{ vm.profileAgeText }} - {{ vm.profile.rating }} rating</p>
+      </div>
+    </article>
+    <article class="minimal-card personal-details-card">
+      <div class="section-title compact inline">
+        <h2>Personal details</h2>
+        <button class="secondary-mini" type="button" (click)="vm.editPersonalDetails()" *ngIf="!vm.personalDetailsEditing">Edit</button>
+      </div>
+      <div class="profile-detail-list" *ngIf="!vm.personalDetailsEditing">
+        <span><small>Name</small><strong>{{ vm.profile.fullName }}</strong></span>
+        <span><small>Birthday</small><strong>{{ vm.profile.birthDate || 'Not added' }}</strong></span>
+        <span><small>Age</small><strong>{{ vm.profileAgeText }}</strong></span>
+        <span><small>Email</small><strong>{{ vm.profile.email || 'Not added' }}</strong></span>
+        <span><small>Phone</small><strong>{{ vm.profile.phone }}</strong></span>
+        <span><small>Address</small><strong>{{ vm.profile.address || 'Not added' }}</strong></span>
+        <span><small>City</small><strong>{{ vm.profile.city || 'Not added' }}</strong></span>
+        <span><small>State</small><strong>{{ vm.profile.state || 'Not added' }}</strong></span>
+        <span><small>Pincode</small><strong>{{ vm.profile.pincode || 'Not added' }}</strong></span>
+        <span><small>Gender</small><strong>{{ vm.profile.gender || 'Not added' }}</strong></span>
+        <span><small>Emergency contact</small><strong>{{ vm.profile.emergencyContactName || 'Not added' }} {{ vm.profile.emergencyContactPhone }}</strong></span>
+      </div>
+      <p class="body-copy" *ngIf="!vm.personalDetailsEditing">{{ vm.profile.bio }}</p>
+      <div class="personal-details-form" *ngIf="vm.personalDetailsEditing">
+        <label class="form-row input-row"><span><small>Full name</small><input [(ngModel)]="vm.profile.fullName" aria-label="Full name" autocomplete="name" /></span></label>
+        <label class="form-row input-row"><span><small>Birthday</small><input [(ngModel)]="vm.profile.birthDate" type="date" aria-label="Birthday" /></span></label>
+        <label class="form-row input-row"><span><small>Email</small><input [(ngModel)]="vm.profile.email" type="email" aria-label="Email" autocomplete="email" /></span></label>
+        <label class="form-row input-row"><span><small>Age</small><input [value]="vm.calculatedProfileAge || ''" aria-label="Age" readonly placeholder="Auto from date of birth" /></span></label>
+        <label class="form-row input-row full-row"><span><small>Address</small><input [(ngModel)]="vm.profile.address" aria-label="Address" autocomplete="street-address" /></span></label>
+        <label class="form-row input-row"><span><small>City</small><input [(ngModel)]="vm.profile.city" aria-label="City" autocomplete="address-level2" /></span></label>
+        <label class="form-row input-row"><span><small>State</small><input [(ngModel)]="vm.profile.state" aria-label="State" autocomplete="address-level1" /></span></label>
+        <label class="form-row input-row"><span><small>Pincode</small><input [(ngModel)]="vm.profile.pincode" aria-label="Pincode" autocomplete="postal-code" inputmode="numeric" /></span></label>
+        <label class="form-row input-row">
+          <span>
+            <small>Gender</small>
+            <select [(ngModel)]="vm.profile.gender" aria-label="Gender">
+              <option value="">Select</option>
+              <option>Female</option>
+              <option>Male</option>
+              <option>Other</option>
+              <option>Prefer not to say</option>
+            </select>
+          </span>
+        </label>
+        <label class="form-row input-row"><span><small>Emergency name</small><input [(ngModel)]="vm.profile.emergencyContactName" aria-label="Emergency contact name" /></span></label>
+        <label class="form-row input-row"><span><small>Emergency phone</small><input [(ngModel)]="vm.profile.emergencyContactPhone" aria-label="Emergency contact phone" inputmode="tel" /></span></label>
+        <label class="form-row input-row full-row textarea-row"><span><small>Bio</small><textarea [(ngModel)]="vm.profile.bio" aria-label="Bio" rows="3"></textarea></span></label>
+      </div>
+      <div class="dual-actions" *ngIf="vm.personalDetailsEditing">
+        <button type="button" (click)="vm.saveProfile()" [disabled]="vm.profileSaving">
+          <span class="button-spinner" *ngIf="vm.profileSaving"></span>
+          {{ vm.profileSaving ? 'Saving...' : 'Save Details' }}
+        </button>
+        <button class="secondary-mini" type="button" (click)="vm.cancelPersonalDetailsEdit()" [disabled]="vm.profileSaving">Cancel</button>
+      </div>
+    </article>
+
+    <article class="minimal-card">
+      <div class="section-title compact"><h2>Travel preferences</h2></div>
+      <div class="preference-grid">
+        <span>{{ vm.profile.travelPreferences.music }}</span>
+        <span>{{ vm.profile.travelPreferences.chat }}</span>
+        <span>{{ vm.profile.travelPreferences.smoking }}</span>
+        <span>{{ vm.profile.travelPreferences.pets }}</span>
+      </div>
+    </article>
+
+    <article class="minimal-card">
+      <div class="section-title compact"><h2>Reviews</h2></div>
+      <p class="body-copy">Passengers mention punctual pickup, clean car, and safe driving.</p>
+    </article>
+  </section>
+
+  <section *ngSwitchCase="'/kyc'" class="screen-stack">
+    <header class="app-header">
+      <button class="icon-button" type="button" (click)="vm.goTo('/settings')" aria-label="Back">
+        <ion-icon name="arrow-back-outline"></ion-icon>
+      </button>
+      <div>
+        <strong>KYC</strong>
+        <span>Passenger Gov ID verification</span>
+      </div>
+      <b class="vehicle-status" [ngClass]="{ verified: vm.isPassengerVerified, pending: !vm.isPassengerVerified }">{{ vm.passengerVerificationLabel }}</b>
+    </header>
+    <article class="minimal-card passenger-verification-card">
+      <div class="section-title compact inline">
+        <h2>Passenger Gov ID</h2>
+        <b class="vehicle-status" [ngClass]="{ verified: vm.isPassengerVerified, pending: !vm.isPassengerVerified }">{{ vm.passengerVerificationLabel }}</b>
+      </div>
+      <label class="form-row input-row">
+        <span>
+          <small>Gov ID number</small>
+          <input [(ngModel)]="vm.profile.govIdNumber" aria-label="Government ID number" placeholder="Aadhaar, PAN, passport" />
+        </span>
+      </label>
+      <div class="verification-upload-grid">
+        <label class="form-row input-row file-row">
+          <span><small>Front photo</small><strong>{{ vm.profile.govIdFrontUrl ? 'Front uploaded' : 'Upload front' }}</strong></span>
+          <input type="file" accept="image/*" (change)="vm.updateGovIdPhoto($event, 'front')" aria-label="Upload Gov ID front photo" />
+          <ion-icon name="cloud-upload-outline"></ion-icon>
+        </label>
+        <label class="form-row input-row file-row">
+          <span><small>Back photo</small><strong>{{ vm.profile.govIdBackUrl ? 'Back uploaded' : 'Upload back' }}</strong></span>
+          <input type="file" accept="image/*" (change)="vm.updateGovIdPhoto($event, 'back')" aria-label="Upload Gov ID back photo" />
+          <ion-icon name="cloud-upload-outline"></ion-icon>
+        </label>
+      </div>
+      <div class="verification-preview-grid" *ngIf="vm.profile.govIdFrontUrl || vm.profile.govIdBackUrl">
+        <figure *ngIf="vm.profile.govIdFrontUrl">
+          <img [src]="vm.profile.govIdFrontUrl" alt="Gov ID front preview" />
+          <figcaption>Front</figcaption>
+        </figure>
+        <figure *ngIf="vm.profile.govIdBackUrl">
+          <img [src]="vm.profile.govIdBackUrl" alt="Gov ID back preview" />
+          <figcaption>Back</figcaption>
+        </figure>
+      </div>
+      <button class="primary-button small-cta" type="button" (click)="vm.submitPassengerVerification()">
+        {{ vm.isPassengerVerified ? 'Verified' : 'Submit Verification' }}
+      </button>
+    </article>
+  </section>
+
+  <section *ngSwitchCase="'/profile-dynamic-disabled'" class="screen-stack profile-screen">
+    <header class="app-header profile-header">
+      <span></span>
+      <strong>Profile</strong>
+      <button class="icon-button profile-settings-button" type="button" (click)="vm.goTo('/settings')" aria-label="Settings">
+        <ion-icon name="settings-outline"></ion-icon>
+      </button>
+    </header>
+    <article class="minimal-card profile-hero">
+      <label class="profile-photo-control" aria-label="Upload profile photo">
+        <img *ngIf="vm.profile.photoUrl; else profileInitialsTpl" [src]="vm.profile.photoUrl" alt="Profile photo" />
+        <ng-template #profileInitialsTpl><span>{{ vm.profileInitials }}</span></ng-template>
+        <input type="file" accept="image/*" (change)="vm.updateProfilePhoto($event)" />
+      </label>
+      <div class="profile-identity">
+        <strong>{{ vm.profile.fullName }}</strong>
+        <span>{{ vm.profileAgeText }} - {{ vm.profile.rating }} rating - {{ vm.profile.role | titlecase }}</span>
+        <small>{{ vm.profileBadges.join(' - ') }}</small>
+        <div class="profile-stats">
+          <b><span>{{ vm.profile.stats.completedRides }}</span>Rides</b>
+          <b><span>{{ vm.profile.stats.reviews }}</span>Reviews</b>
+          <b><span>{{ vm.profile.stats.vehicles }}</span>Cars</b>
+        </div>
+      </div>
+      <button type="button" (click)="vm.saveProfile()" [disabled]="vm.profileSaving">{{ vm.profileSaving ? 'Saving' : 'Save' }}</button>
+    </article>
+    <article class="minimal-card">
+      <div class="section-title compact"><h2>Personal details</h2></div>
+      <label class="form-row input-row"><span><small>Display name</small><input [(ngModel)]="vm.profile.fullName" aria-label="Display name" /></span></label>
+      <label class="form-row input-row"><span><small>Age</small><input [value]="vm.calculatedProfileAge || ''" aria-label="Age" readonly placeholder="Auto from date of birth" /></span></label>
+      <div class="profile-detail-list">
+        <span><ion-icon name="person-circle-outline"></ion-icon>{{ vm.profile.phone }}</span>
+        <span><ion-icon name="shield-checkmark-outline"></ion-icon>Member since {{ vm.profile.memberSince }}</span>
+      </div>
+    </article>
+    <article class="minimal-card">
+      <div class="section-title compact"><h2>Bio</h2></div>
+      <textarea class="profile-bio-input" [(ngModel)]="vm.profile.bio" aria-label="Profile bio"></textarea>
+    </article>
+    <article class="minimal-card">
+      <div class="section-title compact"><h2>Travel preferences</h2></div>
+      <div class="preference-grid profile-preferences">
+        <label *ngFor="let preference of vm.profilePreferenceList">
+          <small>{{ preference.label }}</small>
+          <input [(ngModel)]="$any(vm.profile.travelPreferences)[preference.label.toLowerCase()]" [attr.aria-label]="preference.label + ' preference'" />
+        </label>
+      </div>
+    </article>
+    <article class="minimal-card">
+      <div class="section-title compact"><h2>Reviews</h2></div>
+      <div class="profile-review" *ngFor="let review of vm.profile.reviews">
+        <strong>{{ review.rating }}.0</strong>
+        <p>{{ review.comment }}</p>
+        <small>{{ review.reviewer?.full_name || 'Verified rider' }}</small>
+      </div>
+    </article>
+  </section>
+
+  <section *ngSwitchCase="'/vehicles'" class="screen-stack">
+    <header class="app-header">
+      <button class="icon-button" type="button" (click)="vm.backFromVehicleForm()" aria-label="Back">
+        <ion-icon name="arrow-back-outline"></ion-icon>
+      </button>
+      <div>
+        <strong>Vehicles</strong>
+        <span>Driver vehicle verification</span>
+      </div>
+      <button class="icon-button" type="button" aria-label="Realtime status">
+        <ion-icon name="shield-checkmark-outline"></ion-icon>
+      </button>
+    </header>
+    <article class="realtime-strip">
+      <ion-icon name="notifications-outline"></ion-icon>
+      <span>{{ vm.liveActivity }}</span>
+    </article>
+    <article class="minimal-card auth-card">
+      <div class="section-title">
+        <h1>{{ vm.isEditingVehicle ? 'Edit vehicle' : 'Add vehicle' }}</h1>
+        <p>Upload vehicle documents plus front and back photos. Admin verification is required before publishing.</p>
+      </div>
+      <article class="vehicle-edit-summary" *ngIf="vm.isEditingVehicle">
+        <div>
+          <strong>Current vehicle details</strong>
+          <span>{{ vm.vehicleForm.make }} {{ vm.vehicleForm.model }} - {{ vm.vehicleForm.plateNumber }}</span>
+        </div>
+        <b class="vehicle-status" [ngClass]="vm.vehicleStatusClass({ status: vm.vehicleForm.status })">{{ vm.vehicleDisplayStatus({ status: vm.vehicleForm.status }) | titlecase }}</b>
+      </article>
+      <article class="vehicle-limit-banner" *ngIf="!vm.isEditingVehicle">
+        <strong>{{ vm.vehicles.length }}/2 owner vehicles added</strong>
+        <span>Only two owner vehicles can be attached to this profile.</span>
+      </article>
+      <div class="vehicle-form-grid">
+        <div class="form-row input-row vehicle-lookup-row">
+          <span>
+            <small class="required-label">Make <em>*</em></small>
+            <input [ngModel]="vm.vehicleForm.make" (ngModelChange)="vm.onVehicleMakeChange($event)" (focus)="vm.openVehicleLookup('make')" (blur)="vm.closeVehicleLookup()" aria-label="Vehicle make" autocomplete="off" placeholder="Search car make" />
+          </span>
+          <ion-icon name="search-outline"></ion-icon>
+          <div class="vehicle-lookup-menu" *ngIf="vm.activeVehicleLookup === 'make'">
+            <button type="button" *ngFor="let make of vm.filteredVehicleMakeOptions" (mousedown)="vm.selectVehicleMake(make); $event.preventDefault()">
+              {{ make }}
+            </button>
+            <small *ngIf="!vm.filteredVehicleMakeOptions.length">No make found</small>
+          </div>
+        </div>
+        <div class="form-row input-row vehicle-lookup-row">
+          <span>
+            <small class="required-label">Model <em>*</em></small>
+            <input [ngModel]="vm.vehicleForm.model" (ngModelChange)="vm.onVehicleModelChange($event)" (focus)="vm.openVehicleLookup('model')" (blur)="vm.closeVehicleLookup()" aria-label="Vehicle model" autocomplete="off" placeholder="Search model" />
+          </span>
+          <ion-icon name="search-outline"></ion-icon>
+          <div class="vehicle-lookup-menu" *ngIf="vm.activeVehicleLookup === 'model'">
+            <button type="button" *ngFor="let model of vm.filteredVehicleModelOptions" (mousedown)="vm.selectVehicleModel(model); $event.preventDefault()">
+              <span>{{ model.name }}</span>
+              <small>{{ model.seats }} seats</small>
+            </button>
+            <small *ngIf="vm.vehicleForm.make && !vm.filteredVehicleModelOptions.length">Type model name if not listed</small>
+            <small *ngIf="!vm.vehicleForm.make">Select or type make first</small>
+          </div>
+        </div>
+        <label class="form-row input-row"><span><small>Color</small><input [(ngModel)]="vm.vehicleForm.color" (focus)="vm.activeVehicleLookup = null" aria-label="Vehicle color" /></span></label>
+        <label class="form-row input-row"><span><small class="required-label">Plate number <em>*</em></small><input [ngModel]="vm.vehicleForm.plateNumber" (ngModelChange)="vm.onVehiclePlateInput($event)" aria-label="Plate number" autocapitalize="characters" autocomplete="off" /></span></label>
+        <label class="form-row input-row"><span><small class="required-label">Seats <em>*</em></small><input type="number" min="1" max="12" [(ngModel)]="vm.vehicleForm.seats" (focus)="vm.activeVehicleLookup = null" aria-label="Vehicle seats" /></span></label>
+      </div>
+      <label class="form-row input-row file-row vehicle-upload-card">
+        <span class="file-row-copy"><small class="required-label">RC book <em>*</em></small><strong>{{ vm.vehicleForm.rcDocumentUrl ? 'RC uploaded' : 'Upload RC book' }}</strong></span>
+        <div class="inline-upload-preview" *ngIf="vm.vehicleForm.rcDocumentUrl; else rcUploadPlaceholder">
+          <img [src]="vm.vehiclePreviewUrl(vm.vehicleForm.rcDocumentUrl, 'RC')" alt="RC book preview" />
+          <small>RC preview</small>
+        </div>
+        <ng-template #rcUploadPlaceholder><div class="inline-upload-placeholder"><ion-icon name="document-text-outline"></ion-icon><small>Upload image</small></div></ng-template>
+        <input type="file" accept="image/*" (change)="vm.updateVehicleDocument($event, 'rcDocumentUrl')" aria-label="Upload RC book" />
+        <ion-icon name="cloud-upload-outline"></ion-icon>
+      </label>
+      <label class="form-row input-row file-row vehicle-upload-card">
+        <span class="file-row-copy"><small>Insurance</small><strong>{{ vm.vehicleForm.insuranceDocumentUrl ? 'Insurance uploaded' : 'Upload insurance' }}</strong></span>
+        <div class="inline-upload-preview" *ngIf="vm.vehicleForm.insuranceDocumentUrl; else insuranceUploadPlaceholder">
+          <img [src]="vm.vehiclePreviewUrl(vm.vehicleForm.insuranceDocumentUrl, 'Insurance')" alt="Insurance preview" />
+          <small>Insurance preview</small>
+        </div>
+        <ng-template #insuranceUploadPlaceholder><div class="inline-upload-placeholder"><ion-icon name="document-attach-outline"></ion-icon><small>Optional image</small></div></ng-template>
+        <input type="file" accept="image/*" (change)="vm.updateVehicleDocument($event, 'insuranceDocumentUrl')" aria-label="Upload insurance" />
+        <ion-icon name="cloud-upload-outline"></ion-icon>
+      </label>
+      <label class="form-row input-row file-row vehicle-upload-card">
+        <span class="file-row-copy"><small class="required-label">Vehicle front photo <em>*</em></small><strong>{{ vm.vehicleForm.frontPhotoUrl ? 'Front photo uploaded' : 'Upload front side' }}</strong></span>
+        <div class="inline-upload-preview" *ngIf="vm.vehicleForm.frontPhotoUrl; else frontUploadPlaceholder">
+          <img [src]="vm.vehiclePreviewUrl(vm.vehicleForm.frontPhotoUrl, 'Front')" alt="Vehicle front photo preview" />
+          <small>Front side preview</small>
+        </div>
+        <ng-template #frontUploadPlaceholder><div class="inline-upload-placeholder"><ion-icon name="car-outline"></ion-icon><small>Front side image</small></div></ng-template>
+        <input type="file" accept="image/*" (change)="vm.updateVehicleDocument($event, 'frontPhotoUrl')" aria-label="Upload vehicle front side photo" />
+        <ion-icon name="cloud-upload-outline"></ion-icon>
+      </label>
+      <label class="form-row input-row file-row vehicle-upload-card">
+        <span class="file-row-copy"><small class="required-label">Vehicle back photo <em>*</em></small><strong>{{ vm.vehicleForm.backPhotoUrl ? 'Back photo uploaded' : 'Upload back side' }}</strong></span>
+        <div class="inline-upload-preview" *ngIf="vm.vehicleForm.backPhotoUrl; else backUploadPlaceholder">
+          <img [src]="vm.vehiclePreviewUrl(vm.vehicleForm.backPhotoUrl, 'Back')" alt="Vehicle back photo preview" />
+          <small>Back side preview</small>
+        </div>
+        <ng-template #backUploadPlaceholder><div class="inline-upload-placeholder"><ion-icon name="car-outline"></ion-icon><small>Back side image</small></div></ng-template>
+        <input type="file" accept="image/*" (change)="vm.updateVehicleDocument($event, 'backPhotoUrl')" aria-label="Upload vehicle back side photo" />
+        <ion-icon name="cloud-upload-outline"></ion-icon>
+      </label>
+      <div class="vehicle-form-actions">
+        <button type="button" (click)="vm.backFromVehicleForm()">Back</button>
+        <button type="button" (click)="vm.resetVehicleForm()">Clear</button>
+        <button type="button" (click)="vm.addVehicle()" [class.disabled-option]="!vm.isEditingVehicle && vm.vehicles.length >= 2" [attr.aria-disabled]="!vm.isEditingVehicle && vm.vehicles.length >= 2" [disabled]="vm.vehicleSaving">
+          <span class="button-spinner" *ngIf="vm.vehicleSaving"></span>
+          {{ vm.vehicleSaving ? 'Saving...' : vm.isEditingVehicle ? 'Save Vehicle' : 'Add Vehicle' }}
+        </button>
+      </div>
+    </article>
+
+    <ng-container *ngIf="!vm.isEditingVehicle">
+      <article class="payment-method vehicle-method" *ngFor="let vehicle of vm.vehicles">
+        <ion-icon name="car-outline"></ion-icon>
+        <div>
+          <strong>{{ vehicle.make }} {{ vehicle.model }}</strong>
+          <span>{{ vehicle.color }} - {{ vehicle.plateNumber }} - {{ vehicle.seats }} seats</span>
+          <small>{{ vm.vehicleDocumentSummary(vehicle) }}</small>
+        </div>
+        <b class="vehicle-status" [ngClass]="vm.vehicleStatusClass(vehicle)">{{ vm.vehicleDisplayStatus(vehicle) | titlecase }}</b>
+        <div class="vehicle-row-actions">
+          <button type="button" aria-label="Vehicle options" (click)="vm.toggleVehicleMenu(vehicle)"><ion-icon name="ellipsis-vertical-outline"></ion-icon></button>
+          <div class="vehicle-menu-list" *ngIf="vm.activeVehicleMenuId === vm.vehicleKey(vehicle)">
+            <button type="button" (click)="vm.editVehicle(vehicle)">Edit</button>
+            <button type="button" class="danger-link" (click)="vm.deleteVehicle(vehicle)">Delete</button>
+          </div>
+        </div>
+      </article>
+    </ng-container>
+  </section>
+</ng-container>
